@@ -1,9 +1,248 @@
+/* ═══════════════════════════════════════════════════════════
+   GRAPH VIEW — CASCADE PROPAGATION CANVAS
+   Deep void atmosphere · Layered glow · Cinematic depth
+   ═══════════════════════════════════════════════════════════ */
+
+
+/* ── SIGMA CONTAINER — fills the graph-wrap div ─────────── */
+
+.sigma-container {
+    width: 100% !important;
+    height: 100% !important;
+    /* Never paint a solid background — let graph-wrap handle depth */
+    background: transparent !important;
+    /* Prevent canvas artifacts on scroll */
+    will-change: transform;
+    /* Crisp sub-pixel rendering */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
+}
+
+
+/* ── GRAPH CONTAINER (used in non-App contexts) ─────────── */
+
 .graph-container {
+    position: relative;
     width: 100%;
     height: 550px;
-    background: #0a0c10;
-    border-radius: 12px;
-    border: 1px solid #2a2e36;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    /* Deep space void with subtle blue-tinted atmosphere */
+    background: /* Central radial glow — subtle depth source */
+    radial-gradient( ellipse 55% 45% at 50% 52%, rgba(0, 30, 60, 0.28) 0%, transparent 70%), /* Edge vignette for cinematic depth */
+    radial-gradient( ellipse 100% 100% at 50% 50%, transparent 40%, rgba(2, 4, 10, 0.55) 100%), /* Base void */
+    #050a12;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 95, 31, 0.14);
+    overflow: hidden;
+    isolation: isolate;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 4px 32px rgba(0, 0, 0, 0.6), 0 0 60px rgba(0, 30, 60, 0.12);
     margin-bottom: 1.5rem;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.graph-container:hover {
+    border-color: rgba(255, 95, 31, 0.22);
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 40px rgba(0, 0, 0, 0.65), 0 0 80px rgba(255, 95, 31, 0.04);
+}
+
+
+/* Subtle noise texture overlay for depth */
+
+.graph-container::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.035'/%3E%3C/svg%3E");
+    background-size: 256px 256px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 1;
+    mix-blend-mode: overlay;
+}
+
+
+/* Precision corner markers */
+
+.graph-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: /* Top-left corner bracket */
+    linear-gradient(to right, rgba(255, 95, 31, 0.4) 16px, transparent 16px) 0 0 / 100% 1px no-repeat, linear-gradient(to bottom, rgba(255, 95, 31, 0.4) 16px, transparent 16px) 0 0 / 1px 100% no-repeat, /* Top-right corner bracket */
+    linear-gradient(to left, rgba(255, 95, 31, 0.25) 16px, transparent 16px) 100% 0 / 100% 1px no-repeat, linear-gradient(to bottom, rgba(255, 95, 31, 0.25) 16px, transparent 16px) 100% 0 / 1px 100% no-repeat, /* Bottom-left corner bracket */
+    linear-gradient(to right, rgba(255, 95, 31, 0.2) 16px, transparent 16px) 0 100% / 100% 1px no-repeat, linear-gradient(to top, rgba(255, 95, 31, 0.2) 16px, transparent 16px) 0 100% / 1px 100% no-repeat, /* Bottom-right corner bracket */
+    linear-gradient(to left, rgba(255, 95, 31, 0.15) 16px, transparent 16px) 100% 100% / 100% 1px no-repeat, linear-gradient(to top, rgba(255, 95, 31, 0.15) 16px, transparent 16px) 100% 100% / 1px 100% no-repeat;
+    pointer-events: none;
+    z-index: 3;
+}
+
+
+/* ── SIGMA CONTAINER INSIDE .graph-container ────────────── */
+
+.graph-container .sigma-container {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 2;
+}
+
+
+/* ── CANVAS ELEMENT STYLING ─────────────────────────────── */
+
+.graph-container canvas,
+.sigma-container canvas {
+    /* Ensures pixel-perfect rendering on HiDPI */
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: pixelated;
+    position: absolute !important;
+}
+
+
+/* ── EMPTY STATE ─────────────────────────────────────────── */
+
+.sigma-container:empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+
+/* ── LOADING OVERLAY (for graph area) ───────────────────── */
+
+.graph-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    background: rgba(5, 10, 18, 0.85);
+    backdrop-filter: blur(2px);
+    z-index: 10;
+}
+
+.graph-loading-ring {
+    width: 36px;
+    height: 36px;
+    border: 1.5px solid rgba(255, 95, 31, 0.12);
+    border-top-color: rgba(255, 95, 31, 0.85);
+    border-radius: 50%;
+    animation: graph-spin 0.75s linear infinite;
+}
+
+@keyframes graph-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.graph-loading-text {
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 9px;
+    color: rgba(255, 95, 31, 0.5);
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+    animation: graph-pulse-text 1.6s ease-in-out infinite;
+}
+
+@keyframes graph-pulse-text {
+    0%,
+    100% {
+        opacity: 0.4;
+    }
+    50% {
+        opacity: 0.9;
+    }
+}
+
+
+/* ── NODE TOOLTIP (if implemented) ─────────────────────── */
+
+.graph-tooltip {
+    position: absolute;
+    background: rgba(8, 14, 26, 0.96);
+    border: 1px solid rgba(255, 95, 31, 0.3);
+    border-radius: 4px;
+    padding: 8px 12px;
+    pointer-events: none;
+    z-index: 20;
+    max-width: 200px;
+    backdrop-filter: blur(8px);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 95, 31, 0.08);
+    animation: tooltip-appear 0.12s ease;
+}
+
+@keyframes tooltip-appear {
+    from {
+        opacity: 0;
+        transform: translateY(3px) scale(0.97);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.graph-tooltip-name {
+    font-family: 'Rajdhani', 'DM Sans', system-ui, sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(240, 244, 255, 0.95);
+    margin-bottom: 4px;
+    line-height: 1.3;
+}
+
+.graph-tooltip-type {
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+}
+
+.graph-tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    font-size: 9.5px;
+    color: rgba(0, 207, 255, 0.7);
+}
+
+
+/* ── GRAPH CAPTURE / EXPORT INDICATOR ───────────────────── */
+
+.graph-container.capturing {
+    box-shadow: 0 0 0 2px rgba(255, 95, 31, 0.6), 0 0 30px rgba(255, 95, 31, 0.2);
+    transition: box-shadow 0.15s ease;
+}
+
+
+/* ── FULLSCREEN MODE ─────────────────────────────────────── */
+
+.graph-container.fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    border-radius: 0 !important;
+    z-index: 9999 !important;
+    margin: 0 !important;
+}
+
+
+/* ── MEDIA QUERY — ensure container fills on smaller screens */
+
+@media (max-width: 900px) {
+    .graph-container {
+        height: 380px;
+    }
+}
+
+@media (max-width: 600px) {
+    .graph-container {
+        height: 280px;
+        border-radius: 6px;
+    }
 }
