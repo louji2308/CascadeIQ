@@ -1,0 +1,65 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background: #030405;
+    font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+.app {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+header h1 {
+    background: linear-gradient(135deg, #FF5F1F, #FFB347);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    font-size: 2.2rem;
+}
+
+header select {
+    background: #111317;
+    color: white;
+    border: 1px solid #2a2e36;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+}
+
+.risk-badge {
+    background: #1a1f2a;
+    border-left: 4px solid #FF5F1F;
+    padding: 0.8rem 1.2rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    color: #ccc;
+    font-size: 1.2rem;
+}
+
+.risk-badge strong {
+    color: #FF5F1F;
+    font-size: 1.6rem;
+    margin: 0 0.2rem;
+}
+
+.loader {
+    text-align: center;
+    padding: 3rem;
+    color: #888;
+}
