@@ -7,29 +7,24 @@ router.get('/:hazardId', async(req, res, next) => {
     try {
         const { hazardId } = req.params;
         const minProb = parseFloat(req.query.minProb || '0.5');
+        const maxDepthRaw = parseInt(req.query.maxDepth || '6');
+        const maxDepth = Math.min(Math.max(maxDepthRaw, 1), 8);
+        const removed = req.query.removed ? req.query.removed.split(',') : [];
 
-        // Verify hazard exists first
-        const hazardCheck = await runQuery(`
-      MATCH (h:Hazard {id: $hazardId})
-      RETURN h.name AS name, h.severity AS severity, h.type AS type
-    `, { hazardId });
+        // Verify hazard exists
+        const hazardCheck = await runQuery(
+            `MATCH (h:Hazard {id: $hazardId}) RETURN h.name AS name, h.severity AS severity, h.type AS type`, { hazardId }
+        );
 
         if (hazardCheck.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: `Hazard with id "${hazardId}" not found`
-            });
+            return res.status(404).json({ success: false, error: `Hazard "${hazardId}" not found` });
         }
 
-        // CRITICAL FIX: Neo4j does not allow $parameters inside [r*1..$depth]
-        // The depth must be a hardcoded number in the Cypher string itself
-        // We build the query string with the number directly interpolated
-        const maxDepth = parseInt(req.query.maxDepth || '6');
-        const safDepth = Math.min(Math.max(maxDepth, 1), 8); // clamp between 1 and 8
-
+        // Corrected Cypher – uses startNode(r) and endNode(r) instead of index-based ranges
         const cascadeQuery = `
-      MATCH path = (start:Hazard {id: $hazardId})-[r*1..${safDepth}]->(end)
+      MATCH path = (start:Hazard {id: $hazardId})-[r*1..${maxDepth}]->(end)
       WHERE ALL(rel IN relationships(path) WHERE rel.prob > $minProb)
+        AND ALL(n IN nodes(path) WHERE NOT n.id IN $removed)
       WITH path,
            nodes(path) AS ns,
            relationships(path) AS rs,
@@ -44,6 +39,8 @@ router.get('/:hazardId', async(req, res, next) => {
           type: n.type
         }] AS nodes,
         [r IN rs | {
+          from: startNode(r).id,
+          to: endNode(r).id,
           type: type(r),
           prob: r.prob,
           delay_hrs: r.delay_hrs,
@@ -56,9 +53,9 @@ router.get('/:hazardId', async(req, res, next) => {
       LIMIT 20
     `;
 
-        const paths = await runQuery(cascadeQuery, { hazardId, minProb });
+        const paths = await runQuery(cascadeQuery, { hazardId, minProb, removed });
 
-        // Compute risk score 0-100
+        // Compute risk score
         let riskScore = 0;
         if (paths.length > 0) {
             const topProb = paths[0].probability_pct || 0;
@@ -66,14 +63,17 @@ router.get('/:hazardId', async(req, res, next) => {
             riskScore = Math.min(100, Math.round(topProb * (1 + maxDepthFound * 0.05)));
         }
 
+        const firstPath = paths[0] || { nodes: [], edges: [] };
+
         res.json({
             success: true,
             hazard: hazardCheck[0],
             riskScore,
             pathCount: paths.length,
-            paths
+            paths,
+            nodes: firstPath.nodes,
+            edges: firstPath.edges,
         });
-
     } catch (err) {
         next(err);
     }
