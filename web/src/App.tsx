@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import GraphView from './components/GraphView';
 import './App.css';
@@ -44,6 +44,32 @@ interface CascadeData {
   edges: CascadeEdge[];
   riskScore: number;
   paths: CascadePath[];
+}
+
+interface NeoInt {
+  low: number;
+}
+
+interface ScenarioRecord extends Omit<Scenario, 'year' | 'deaths'> {
+  year: number | NeoInt;
+  deaths: number | NeoInt;
+}
+
+interface ScenarioResponse {
+  data: ScenarioRecord[];
+}
+
+interface ScenarioNodeRecord {
+  node?: CascadeNode;
+}
+
+interface ScenarioNodeResponse {
+  data: ScenarioNodeRecord[];
+}
+
+interface CascadeResponse {
+  paths?: CascadePath[];
+  riskScore?: number;
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -158,10 +184,17 @@ function SysClock() {
   return <span className="sys-clock">{time} UTC</span>;
 }
 
+function asNumber(value: number | NeoInt) {
+  return typeof value === 'object' ? value.low : value;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : 'FETCH ERROR';
+}
+
 export default function App() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedId, setSelectedId] = useState('');
-  const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
   const [cascadeData, setCascadeData] = useState<CascadeData | null>(null);
   const [removedNodes, setRemovedNodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -170,30 +203,10 @@ export default function App() {
   const [selectedPath, setSelectedPath] = useState<number>(0);
   const [simRunning, setSimRunning] = useState(false);
   const [simStep, setSimStep] = useState(-1);
-
-  useEffect(() => {
-    axios.get(`${API_BASE}/api/scenarios`)
-      .then(res => {
-        const data = res.data.data.map((s: any) => ({
-          ...s,
-          year: typeof s.year === 'object' ? s.year.low : s.year,
-          deaths: typeof s.deaths === 'object' ? s.deaths.low : s.deaths,
-        }));
-        setScenarios(data);
-      })
-      .catch(() => setError('NEO4J CONNECTION FAILED'));
-  }, []);
-
-  useEffect(() => {
-    if (!selectedId) return;
-    const sc = scenarios.find(s => s.id === selectedId) || null;
-    setSelectedScenario(sc);
-    setRemovedNodes([]);
-    setSelectedNode(null);
-    setSimStep(-1);
-    setSimRunning(false);
-    fetchCascade(selectedId, []);
-  }, [selectedId]);
+  const selectedScenario = useMemo(
+    () => scenarios.find(s => s.id === selectedId) || null,
+    [scenarios, selectedId],
+  );
 
   const fetchCascade = useCallback(async (scenarioId: string, removed: string[]) => {
     setLoading(true);
@@ -201,13 +214,13 @@ export default function App() {
     setCascadeData(null);
 
     try {
-      const scenRes = await axios.get(`${API_BASE}/api/scenarios/${scenarioId}`);
-      const records = scenRes.data.data as any[];
+      const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`);
+      const records = scenRes.data.data;
       const hazardRec = records.find(r => r.node?.label === 'Hazard');
       if (!hazardRec?.node) throw new Error('No hazard node found');
 
       const hazardId = hazardRec.node.id;
-      const cascRes = await axios.get(`${API_BASE}/api/cascade/${hazardId}`, {
+      const cascRes = await axios.get<CascadeResponse>(`${API_BASE}/api/cascade/${hazardId}`, {
         params: { removed: removed.join(',') },
       });
 
@@ -232,11 +245,24 @@ export default function App() {
         paths,
       });
       setSelectedPath(0);
-    } catch (e: any) {
-      setError(e.message || 'FETCH ERROR');
+    } catch (e: unknown) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  useEffect(() => {
+    axios.get<ScenarioResponse>(`${API_BASE}/api/scenarios`)
+      .then(res => {
+        const data = res.data.data.map((s): Scenario => ({
+          ...s,
+          year: asNumber(s.year),
+          deaths: asNumber(s.deaths),
+        }));
+        setScenarios(data);
+      })
+      .catch(() => setError('NEO4J CONNECTION FAILED'));
   }, []);
 
   const toggleNode = (nodeId: string) => {
@@ -247,6 +273,16 @@ export default function App() {
     if (selectedId) fetchCascade(selectedId, next);
   };
 
+  const handleScenarioSelect = (scenarioId: string) => {
+    setSelectedId(scenarioId);
+    setRemovedNodes([]);
+    setSelectedNode(null);
+    setSimStep(-1);
+    setSimRunning(false);
+    setCascadeData(null);
+    if (scenarioId) fetchCascade(scenarioId, []);
+  };
+
   const runSimulation = () => {
     if (!cascadeData || simRunning) return;
     setSimRunning(true);
@@ -255,7 +291,6 @@ export default function App() {
     if (!path) { setSimRunning(false); return; }
 
     path.nodes.forEach((_, i) => {
-      const delay = i === 0 ? 0 : (path.edges[i - 1]?.delay_hrs || 1) * 500;
       setTimeout(() => {
         setSimStep(i);
         if (i === path.nodes.length - 1) {
@@ -321,7 +356,7 @@ export default function App() {
           <div className="panel-block">
             <div className="panel-label">TARGET SCENARIO</div>
             <div className="scenario-select-wrap">
-              <select value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+              <select value={selectedId} onChange={e => handleScenarioSelect(e.target.value)}>
                 <option value="">— SELECT DISASTER EVENT —</option>
                 {scenarios.map(s => (
                   <option key={s.id} value={s.id}>

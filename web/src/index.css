@@ -159,3 +159,27 @@ body,
         transform: scale(1);
     }
 }
+
+button,
+select,
+[role='button'] {
+    -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+select:focus-visible,
+[role='button']:focus-visible {
+    outline: 2px solid rgba(0, 207, 255, 0.55);
+    outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.001ms !important;
+    }
+}

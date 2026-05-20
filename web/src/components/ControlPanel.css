@@ -618,3 +618,30 @@
         transform: rotate(360deg);
     }
 }
+
+.cp-risk-readout {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 10px 14px 0;
+    padding: 9px 10px;
+    background: rgba(0, 207, 255, 0.035);
+    border: 1px solid rgba(0, 207, 255, 0.11);
+    border-radius: 4px;
+    font-family: var(--font-mono, 'Share Tech Mono', monospace);
+}
+
+.cp-risk-readout span {
+    color: rgba(123, 143, 171, 0.72);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+}
+
+.cp-risk-readout strong {
+    color: var(--cyan, #00CFFF);
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: 1px;
+}

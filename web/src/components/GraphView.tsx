@@ -57,6 +57,7 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
       graph.addNode(n.id, {
         label: n.name,
         size,
+        originalSize: size,
         color: NODE_COLORS[n.label] || '#AAAAAA',
         originalColor: NODE_COLORS[n.label] || '#AAAAAA',
         nodeLabel: n.label,
@@ -72,6 +73,8 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
         graph.addEdge(e.from, e.to, {
           label: `${e.type} (${Math.round(e.prob * 100)}%)`,
           size: Math.max(1, e.prob * 2.5),
+          originalSize: Math.max(1, e.prob * 2.5),
+          prob: e.prob,
           color: `rgba(180,190,210,${alpha})`,
           originalColor: `rgba(180,190,210,${alpha})`,
           type: 'arrow',
@@ -90,7 +93,7 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
             barnesHutOptimize: graph.order > 50,
           },
         });
-      } catch (_) { /* fallback to random positions */ }
+      } catch { /* fallback to random positions */ }
     }
 
     try {
@@ -115,7 +118,6 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
       });
 
       sigmaRef.current.on('enterNode', ({ node }) => {
-        const attrs = graph.getNodeAttributes(node);
         containerRef.current!.style.cursor = 'pointer';
         // Highlight connected edges
         graph.forEachEdge((edge, edgeAttrs) => {
@@ -134,11 +136,11 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
         containerRef.current!.style.cursor = 'default';
         graph.forEachEdge((edge) => {
           graph.setEdgeAttribute(edge, 'color', graph.getEdgeAttribute(edge, 'originalColor'));
-          graph.setEdgeAttribute(edge, 'size',
-            Math.max(1, (graph.getEdgeAttribute(edge, 'prob') || 0.5) * 2.5));
+          graph.setEdgeAttribute(edge, 'size', graph.getEdgeAttribute(edge, 'originalSize'));
         });
         graph.forEachNode(node => {
           graph.setNodeAttribute(node, 'highlighted', false);
+          graph.setNodeAttribute(node, 'size', graph.getNodeAttribute(node, 'originalSize'));
         });
         sigmaRef.current?.refresh();
       });
@@ -149,7 +151,7 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
     return () => {
       if (sigmaRef.current) { sigmaRef.current.kill(); sigmaRef.current = null; }
     };
-  }, [nodes, edges]);
+  }, [nodes, edges, onNodeClick]);
 
   // Handle simulation highlight path
   useEffect(() => {
@@ -161,9 +163,11 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
       // Reset all colors
       graph.forEachNode(node => {
         graph.setNodeAttribute(node, 'color', graph.getNodeAttribute(node, 'originalColor'));
+        graph.setNodeAttribute(node, 'size', graph.getNodeAttribute(node, 'originalSize'));
       });
       graph.forEachEdge(edge => {
         graph.setEdgeAttribute(edge, 'color', graph.getEdgeAttribute(edge, 'originalColor'));
+        graph.setEdgeAttribute(edge, 'size', graph.getEdgeAttribute(edge, 'originalSize'));
       });
     } else {
       const pathSet = new Set(highlightPath);
@@ -171,9 +175,10 @@ const GraphView: React.FC<GraphViewProps> = ({ nodes, edges, onNodeClick, highli
         if (pathSet.has(node)) {
           graph.setNodeAttribute(node, 'color', graph.getNodeAttribute(node, 'originalColor'));
           graph.setNodeAttribute(node, 'size',
-            graph.getNodeAttribute(node, 'size') * 1.3);
+            graph.getNodeAttribute(node, 'originalSize') * 1.3);
         } else {
           graph.setNodeAttribute(node, 'color', DIM_COLOR);
+          graph.setNodeAttribute(node, 'size', graph.getNodeAttribute(node, 'originalSize'));
         }
       });
       graph.forEachEdge(edge => {

@@ -216,6 +216,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
       {/* ── SYSTEM INTEGRITY MATRIX ── */}
       <SystemMatrix total={mitigable.length} removed={removedCount} />
 
+      <div className="cp-risk-readout">
+        <span>LIVE RISK INDEX</span>
+        <strong>{animatedRisk}</strong>
+      </div>
+
       {/* ── NODE TOGGLES ── */}
       <div className="cp-divider">
         <span>MITIGABLE SYSTEMS</span>

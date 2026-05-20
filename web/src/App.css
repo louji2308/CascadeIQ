@@ -944,3 +944,131 @@
         grid-template-columns: 240px 1fr 280px;
     }
 }
+
+@media (max-width: 920px) {
+    .dashboard {
+        height: 100dvh;
+        overflow-y: auto;
+    }
+
+    .dash-header {
+        height: auto;
+        min-height: 64px;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+
+    .header-center,
+    .header-right {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .header-center {
+        order: 3;
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .dash-body {
+        display: flex;
+        flex-direction: column;
+        overflow: visible;
+        min-height: auto;
+    }
+
+    .left-panel,
+    .right-panel {
+        border: 0;
+        overflow: visible;
+    }
+
+    .center-panel {
+        min-height: 58dvh;
+        border-top: 1px solid var(--border-panel);
+        border-bottom: 1px solid var(--border-panel);
+    }
+
+    .graph-header,
+    .graph-footer {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .graph-meta {
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .graph-wrap {
+        min-height: 460px;
+    }
+
+    .panel-block.grow {
+        max-height: none;
+        overflow: visible;
+    }
+
+    .right-panel {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+
+    .right-panel .panel-block.grow {
+        grid-column: 1 / -1;
+    }
+}
+
+@media (max-width: 640px) {
+    .logo-text {
+        font-size: 19px;
+    }
+
+    .logo-sub,
+    .sys-clock {
+        font-size: 9px;
+    }
+
+    .threat-level {
+        padding: 5px 10px;
+        letter-spacing: 1px;
+    }
+
+    .graph-wrap {
+        min-height: 390px;
+    }
+
+    .graph-coords {
+        width: calc(100% - 32px);
+        text-align: center;
+        white-space: normal;
+        line-height: 1.5;
+    }
+
+    .legend {
+        gap: 8px;
+    }
+
+    .simulate-btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .right-panel {
+        display: flex;
+    }
+
+    .path-header-row,
+    .node-detail-row,
+    .sys-indicator {
+        gap: 8px;
+    }
+
+    .path-chain,
+    .control-item-name,
+    .node-detail-row .val {
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+}
