@@ -33,7 +33,32 @@ app.get('/api/scenarios', async(req, res) => {
         res.status(500).json({ success: false, error: err.message });
     }
 });
-
+// Get a single scenario with its nodes and edges (for hazard extraction)
+app.get('/api/scenarios/:id', async(req, res) => {
+    try {
+        const { id } = req.params;
+        const records = await runQuery(`
+      MATCH (sc:Scenario {id: $id})-[:CONTAINS]->(n)
+      WITH sc, collect(n) AS scenarioNodes
+      UNWIND scenarioNodes AS a
+      OPTIONAL MATCH (a)-[r]->(b)
+      WHERE b IN scenarioNodes AND type(r) <> 'CONTAINS'
+      RETURN
+        {id: sc.id, name: sc.name, year: toInteger(sc.year),
+         deaths: toInteger(sc.deaths), location: sc.location} AS scenario,
+        {id: a.id, name: a.name, label: labels(a)[0],
+         severity: toInteger(a.severity)} AS node,
+        CASE WHEN r IS NOT NULL THEN
+          {from: a.id, to: b.id, type: type(r),
+           prob: r.prob, delay_hrs: r.delay_hrs, mechanism: r.mechanism}
+        ELSE null END AS edge
+    `, { id });
+        res.json({ success: true, data: records });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 // Cascade endpoint (supports ?removed=...)
 app.get('/api/cascade/:hazardId', async(req, res) => {
     try {

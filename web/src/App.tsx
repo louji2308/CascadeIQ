@@ -69,7 +69,17 @@ function App() {
 
   useEffect(() => {
     axios.get(`${API_BASE}/api/scenarios`)
-      .then(res => setScenarios(res.data.data))
+  .then(res => {
+    const scenarios = res.data.data.map((s: any) => ({
+      id: s.id,
+      name: s.name,
+      year: typeof s.year === 'object' ? s.year.low : s.year,
+      location: s.location,
+      deaths: typeof s.deaths === 'object' ? s.deaths.low : s.deaths,
+      description: s.description
+    }));
+    setScenarios(scenarios);
+  })
       .catch(err => console.error('Failed to fetch scenarios:', err));
   }, []);
 
