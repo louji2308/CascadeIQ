@@ -1,9 +1,14 @@
+require('dotenv').config();
+
 const neo4j = require('neo4j-driver');
 
 let driver;
 
 function getDriver() {
     if (!driver) {
+        if (!process.env.NEO4J_URI) {
+            throw new Error('NEO4J_URI environment variable is not set');
+        }
         driver = neo4j.driver(
             process.env.NEO4J_URI,
             neo4j.auth.basic(process.env.NEO4J_USER, process.env.NEO4J_PASSWORD)
