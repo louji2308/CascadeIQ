@@ -37,7 +37,6 @@ function convertNeo4jIntegers(val) {
     // Primitive (string, number, boolean) — pass through as-is
     return val;
 }
-
 async function runQuery(cypher, params = {}) {
     const session = getDriver().session();
     try {

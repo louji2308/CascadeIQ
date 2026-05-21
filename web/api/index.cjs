@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { runQuery } = require('./neo4j');
+const { runQuery } = require('./neo4j.cjs');
 
 const app = express();
 app.use(cors());
@@ -103,5 +103,63 @@ app.get('/api/cascade/:hazardId', async(req, res) => {
     }
 });
 
+app.get('/api/analytics/criticality', async(req, res) => {
+    try {
+        const records = await runQuery(`
+            MATCH path = (start:Hazard)-[r*1..6]->(end)
+            WHERE ALL(rel IN relationships(path) WHERE rel.prob > 0.4)
+            WITH path,
+                 nodes(path) AS pathNodes,
+                 REDUCE(p = 1.0, rel IN relationships(path) | p * rel.prob) AS pathProb
+            UNWIND pathNodes AS node
+            WHERE NOT node:Scenario
+            WITH node,
+                 count(path)   AS pathCount,
+                 sum(pathProb) AS totalWeight,
+                 max(pathProb) AS maxPathProb
+            RETURN
+                node.id              AS id,
+                node.name            AS name,
+                labels(node)[0]      AS type,
+                node.severity        AS severity,
+                pathCount            AS pathCount,
+                round(totalWeight  * 10000) / 10000 AS totalWeight,
+                round(maxPathProb  * 10000) / 10000 AS maxPathProb
+            ORDER BY totalWeight DESC
+            LIMIT 10
+        `);
+
+        if (!records.length) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const toNum = v => {
+            if (v === null || v === undefined) return 0;
+            if (typeof v === 'object' && v !== null && 'low' in v) return v.low;
+            return Number(v);
+        };
+
+        const maxWeight = Math.max(toNum(records[0].totalWeight), 0.0001);
+
+        const data = records.map((r, i) => ({
+            rank: i + 1,
+            id: r.id,
+            name: r.name,
+            type: r.type,
+            severity: toNum(r.severity) || 5,
+            pathCount: toNum(r.pathCount),
+            totalWeight: toNum(r.totalWeight),
+            maxPathProb: toNum(r.maxPathProb),
+            score: Math.round((toNum(r.totalWeight) / maxWeight) * 100),
+            isCritical: i === 0,
+        }));
+
+        res.json({ success: true, data });
+
+    } catch (err) {
+        console.error('[criticality]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 // Export for Vercel (critical)
 module.exports = app;
