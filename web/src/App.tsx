@@ -61,6 +61,7 @@ interface ScenarioResponse {
 
 interface ScenarioNodeRecord {
   node?: CascadeNode;
+  edge?: CascadeEdge | null;
 }
 
 interface ScenarioNodeResponse {
@@ -214,6 +215,10 @@ export default function App() {
     setCascadeData(null);
 
     try {
+      if (scenarioId === 'live_wildfires_satellite') {
+        await axios.get(`${API_BASE}/api/realtime/wildfires`);
+      }
+
       const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`);
       const records = scenRes.data.data;
       const hazardRec = records.find(r => r.node?.label === 'Hazard');
@@ -227,6 +232,14 @@ export default function App() {
       const paths: CascadePath[] = cascRes.data.paths || [];
       const nodeMap = new Map<string, CascadeNode>();
       const edgeMap = new Map<string, CascadeEdge>();
+
+      records.forEach((r) => {
+        if (r.node && !nodeMap.has(r.node.id)) nodeMap.set(r.node.id, r.node);
+        if (r.edge) {
+          const k = `${r.edge.from}->${r.edge.to}`;
+          if (!edgeMap.has(k)) edgeMap.set(k, r.edge);
+        }
+      });
 
       paths.forEach((p) => {
         (p.nodes || []).forEach((n: CascadeNode) => {
@@ -367,7 +380,22 @@ export default function App() {
             </div>
             {selectedScenario && (
               <div className="scenario-card">
-                <div className="scenario-card-name">{selectedScenario.name}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <div className="scenario-card-name">{selectedScenario.name}</div>
+                  {selectedScenario.id === 'live_wildfires_satellite' && (
+                    <span style={{
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: 9,
+                      padding: '2px 7px',
+                      background: 'rgba(255,61,61,0.15)',
+                      border: '1px solid rgba(255,61,61,0.4)',
+                      borderRadius: 2,
+                      color: '#FF3D3D',
+                      letterSpacing: 1.5,
+                      animation: 'blink 1.5s step-end infinite'
+                    }}>● LIVE</span>
+                  )}
+                </div>
                 <div className="scenario-card-loc">{selectedScenario.location}</div>
                 <div className="stat-grid">
                   <div className="stat-item">

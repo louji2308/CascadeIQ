@@ -19,6 +19,7 @@ const SCENARIO_HAZARD_MAP: Record<string, string> = {
   'lahaina_2023': 'hazard_wildfire_lahaina',
   'turkey_eq_2023': 'hazard_eq_turkey',
   'pakistan_floods_2022': 'hazard_rainfall_pakistan',
+  'live_wildfires_satellite': '',  // filled dynamically
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -66,6 +67,17 @@ export default function HomeScreen({ navigation }: Props) {
   useEffect(() => { fetchScenarios(); }, []);
 
   function handleScenarioPress(scenario: Scenario) {
+    // Special case: live scenario needs to fetch its hazard dynamically
+    if (scenario.id === 'live_wildfires_satellite') {
+      navigation.navigate('Cascade', {
+        scenarioId: scenario.id,
+        scenarioName: scenario.name,
+        hazardId: 'live_fire',
+        hazardName: 'Live Satellite Fire',
+      });
+      return;
+    }
+
     const hazardId = SCENARIO_HAZARD_MAP[scenario.id];
     if (!hazardId) {
       alert(`No hazard mapped for scenario: ${scenario.id}`);
