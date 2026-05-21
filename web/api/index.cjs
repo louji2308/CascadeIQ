@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { runQuery } = require('./neo4j.cjs');
@@ -164,3 +165,17 @@ app.get('/api/analytics/criticality', async(req, res) => {
 });
 // Export for Vercel (critical)
 module.exports = app;
+
+if (require.main === module) {
+    const PORT = process.env.PORT || 3001;
+    app.listen(PORT, () => {
+        console.log(`🚀 CascadeIQ API → http://localhost:${PORT}`);
+        console.log(`📊 Neo4j URI     → ${process.env.NEO4J_URI?.slice(0, 30)}...`);
+        console.log(`\nEndpoints:`);
+        console.log(`  GET /health`);
+        console.log(`  GET /api/scenarios`);
+        console.log(`  GET /api/scenarios/:id`);
+        console.log(`  GET /api/cascade/:hazardId`);
+        console.log(`  GET /api/analytics/criticality`);
+    });
+}
