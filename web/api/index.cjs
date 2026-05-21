@@ -112,6 +112,7 @@ app.get('/api/analytics/criticality', async(req, res) => {
                  nodes(path) AS pathNodes,
                  REDUCE(p = 1.0, rel IN relationships(path) | p * rel.prob) AS pathProb
             UNWIND pathNodes AS node
+            WITH node, path, pathProb
             WHERE NOT node:Scenario
             WITH node,
                  count(path)   AS pathCount,
@@ -121,7 +122,7 @@ app.get('/api/analytics/criticality', async(req, res) => {
                 node.id              AS id,
                 node.name            AS name,
                 labels(node)[0]      AS type,
-                node.severity        AS severity,
+                toInteger(node.severity) AS severity,
                 pathCount            AS pathCount,
                 round(totalWeight  * 10000) / 10000 AS totalWeight,
                 round(maxPathProb  * 10000) / 10000 AS maxPathProb
