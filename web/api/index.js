@@ -6,6 +6,7 @@ for (const envFile of ['.env', '.env.local', '.env.development']) {
 }
 const express = require('express');
 const cors = require('cors');
+const WebSocket = require('ws');
 const { runQuery } = require('./neo4j.cjs');
 
 const app = express();
@@ -435,6 +436,7 @@ app.get('/api/realtime/wildfires', async(req, res) => {
         return sendFallbackFireResponse(res, `NASA FIRMS unavailable: ${err.message}`);
     }
 });
+
 // Export for Vercel (critical)
 module.exports = app;
 
@@ -449,6 +451,103 @@ if (require.main === module) {
         console.log(`  GET /api/scenarios/:id`);
         console.log(`  GET /api/cascade/:hazardId`);
         console.log(`  GET /api/analytics/criticality`);
+        console.log(`  WS  /ws/simulation`);
+    });
+
+    const wss = new WebSocket.Server({ server });
+
+    wss.on('connection', (ws) => {
+        const timers = new Set();
+        const clearTimers = () => {
+            for (const timer of timers) {
+                clearTimeout(timer);
+            }
+            timers.clear();
+        };
+
+        ws.on('message', async(message) => {
+            try {
+                const payload = JSON.parse(message.toString());
+
+                if (payload.type === 'SIMULATE' && payload.hazardId) {
+                    const cypher = `
+      MATCH path = (start:Hazard {id: $hazardId})-[r*1..6]->(end)
+      WHERE ALL(rel IN relationships(path) WHERE rel.prob > $minProb)
+      WITH path, nodes(path) AS ns, relationships(path) AS rs,
+           REDUCE(p = 1.0, r IN relationships(path) | p * r.prob) AS cascade_prob,
+           REDUCE(d = 0, r IN relationships(path) | d + r.delay_hrs) AS total_delay
+      RETURN
+        [n IN ns | {id: n.id, name: n.name, label: labels(n)[0], severity: toInteger(n.severity)}] AS nodes,
+        [r IN rs | {from: startNode(r).id, to: endNode(r).id, type: type(r), prob: r.prob, delay_hrs: r.delay_hrs, mechanism: r.mechanism}] AS edges,
+        length(path) AS depth,
+        round(cascade_prob * 100, 1) AS probability_pct,
+        total_delay AS hours_to_end
+      ORDER BY cascade_prob DESC
+      LIMIT 15
+    `;
+
+                    const paths = await runQuery(cypher, {
+                        hazardId: payload.hazardId,
+                        minProb: 0.5
+                    });
+                    const firstPath = paths[0];
+
+                    if (!firstPath) {
+                        throw new Error(`No cascade path found for hazardId: ${payload.hazardId}`);
+                    }
+
+                    const nodes = firstPath.nodes || [];
+                    const edges = firstPath.edges || [];
+                    let accumulatedDelay = 0;
+
+                    nodes.forEach((node, i) => {
+                        const previousEdge = i === 0 ? null : edges[i - 1];
+                        const delay = i === 0 ? 0 : Number(previousEdge?.delay_hrs || 0) * 600;
+                        accumulatedDelay += delay;
+
+                        const timer = setTimeout(() => {
+                            timers.delete(timer);
+
+                            if (ws.readyState === WebSocket.OPEN) {
+                                ws.send(JSON.stringify({
+                                    type: 'CASCADE_NODE',
+                                    node: {
+                                        id: node.id,
+                                        name: node.name,
+                                        label: node.label
+                                    },
+                                    step: i,
+                                    total: nodes.length,
+                                    mechanism: previousEdge?.mechanism || null
+                                }));
+                            }
+
+                            if (i === nodes.length - 1) {
+                                const completeTimer = setTimeout(() => {
+                                    timers.delete(completeTimer);
+
+                                    if (ws.readyState === WebSocket.OPEN) {
+                                        ws.send(JSON.stringify({ type: 'SIMULATE_COMPLETE' }));
+                                    }
+                                }, 600);
+                                timers.add(completeTimer);
+                            }
+                        }, accumulatedDelay);
+                        timers.add(timer);
+                    });
+                }
+            } catch (err) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'SIMULATE_ERROR',
+                        error: err.message
+                    }));
+                }
+            }
+        });
+
+        ws.on('close', clearTimers);
+        ws.on('error', clearTimers);
     });
 
     const keepAlive = setInterval(() => {}, 1 << 30);
@@ -456,9 +555,9 @@ if (require.main === module) {
     function shutdown(signal) {
         clearInterval(keepAlive);
         console.log(`\n${signal} received. Shutting down CascadeIQ API...`);
-        server.close(() => {
+        wss.close(() => server.close(() => {
             process.exit(0);
-        });
+        }));
     }
 
     process.on('SIGINT', () => shutdown('SIGINT'));

@@ -1,9 +1,26 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import GraphView from './components/GraphView';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
+const runtimeOnVercel = window.location.hostname.toLowerCase().endsWith('vercel.app');
+const apiBaseLooksVercel = API_BASE.toLowerCase().includes('vercel.app');
+
+function getWsBase(apiBase: string) {
+  if (!apiBase) return '';
+
+  try {
+    const url = new URL(apiBase, window.location.origin);
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return '';
+  }
+}
+
+const WS_BASE = getWsBase(API_BASE);
+const wsAvailable = Boolean(WS_BASE) && !apiBaseLooksVercel && !runtimeOnVercel;
 
 interface Scenario {
   id: string;
@@ -204,6 +221,7 @@ export default function App() {
   const [selectedPath, setSelectedPath] = useState<number>(0);
   const [simRunning, setSimRunning] = useState(false);
   const [simStep, setSimStep] = useState(-1);
+  const wsRef = useRef<WebSocket | null>(null);
   const selectedScenario = useMemo(
     () => scenarios.find(s => s.id === selectedId) || null,
     [scenarios, selectedId],
@@ -278,6 +296,13 @@ export default function App() {
       .catch(() => setError('NEO4J CONNECTION FAILED'));
   }, []);
 
+  useEffect(() => {
+    return () => {
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, []);
+
   const toggleNode = (nodeId: string) => {
     const next = removedNodes.includes(nodeId)
       ? removedNodes.filter(id => id !== nodeId)
@@ -296,22 +321,91 @@ export default function App() {
     if (scenarioId) fetchCascade(scenarioId, []);
   };
 
-  const runSimulation = () => {
-    if (!cascadeData || simRunning) return;
+  const runClientSideSimulation = (path: CascadePath) => {
     setSimRunning(true);
-    setSimStep(0);
-    const path = cascadeData.paths[selectedPath];
-    if (!path) { setSimRunning(false); return; }
+    setSimStep(-1);
+
+    if (!path.nodes.length) {
+      setSimRunning(false);
+      return;
+    }
+
+    let accumulatedDelay = 0;
 
     path.nodes.forEach((_, i) => {
+      if (i > 0) {
+        accumulatedDelay += (path.edges[i - 1]?.delay_hrs || 1) * 600;
+      }
+
       setTimeout(() => {
         setSimStep(i);
         if (i === path.nodes.length - 1) {
           setTimeout(() => setSimRunning(false), 600);
         }
-      }, path.nodes.slice(0, i).reduce((acc, __, j) =>
-        acc + (j === 0 ? 0 : (path.edges[j - 1]?.delay_hrs || 1) * 500), 0));
+      }, accumulatedDelay);
     });
+  };
+
+  const runSimulation = () => {
+    if (!cascadeData || simRunning || !activePath) return;
+
+    const hazardNode = cascadeData.nodes.find(n => n.label === 'Hazard') || cascadeData.nodes[0];
+    if (!hazardNode) return;
+
+    if (!wsAvailable) {
+      wsRef.current?.close();
+      wsRef.current = null;
+      runClientSideSimulation(activePath);
+      return;
+    }
+
+    setSimRunning(true);
+    setSimStep(-1);
+
+    wsRef.current?.close();
+
+    const socket = new WebSocket(WS_BASE);
+
+    socket.onopen = () => {
+      socket.send(JSON.stringify({
+        type: 'SIMULATE',
+        hazardId: hazardNode.id,
+      }));
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      switch (data.type) {
+        case 'CASCADE_NODE':
+          setSimStep(data.step);
+          break;
+        case 'SIMULATE_COMPLETE':
+          setSimRunning(false);
+          socket.close();
+          if (wsRef.current === socket) {
+            wsRef.current = null;
+          }
+          break;
+        case 'SIMULATE_ERROR':
+          console.error(data.error || data.message);
+          setSimRunning(false);
+          break;
+      }
+    };
+
+    socket.onerror = () => {
+      setSimRunning(false);
+    };
+
+    socket.onclose = () => {
+      setSimRunning(false);
+      if (wsRef.current === socket) {
+        wsRef.current = null;
+      }
+    };
+
+    wsRef.current = socket;
   };
 
   const mitigable = cascadeData?.nodes.filter(
@@ -543,7 +637,7 @@ export default function App() {
               onClick={runSimulation}
             >
               <span className="simulate-icon" />
-              {simRunning ? 'SIMULATING…' : 'RUN SIMULATION'}
+              {simRunning ? (simStep === -1 ? 'CONNECTING…' : 'SIMULATING…') : 'RUN SIMULATION'}
             </button>
           </div>
         </div>
