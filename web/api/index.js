@@ -1,7 +1,7 @@
 const path = require('path');
 const dotenv = require('dotenv');
 
-for (const envFile of ['.env', '.env.local', '.env.development']) {
+for (const envFile of['.env', '.env.local', '.env.development']) {
     dotenv.config({ path: path.resolve(__dirname, '..', envFile) });
 }
 const express = require('express');
@@ -546,8 +546,23 @@ if (require.main === module) {
             }
         });
 
-        ws.on('close', clearTimers);
-        ws.on('error', clearTimers);
+        const pingInterval = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.ping();
+            } else {
+                clearInterval(pingInterval);
+            }
+        }, 30000);
+
+        ws.on('close', () => {
+            clearInterval(pingInterval);
+            clearTimers();
+        });
+
+        ws.on('error', () => {
+            clearInterval(pingInterval);
+            clearTimers();
+        });
     });
 
     const keepAlive = setInterval(() => {}, 1 << 30);

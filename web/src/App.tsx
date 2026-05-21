@@ -4,7 +4,6 @@ import GraphView from './components/GraphView';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
-const runtimeOnVercel = window.location.hostname.toLowerCase().endsWith('vercel.app');
 const apiBaseLooksVercel = API_BASE.toLowerCase().includes('vercel.app');
 
 function getWsBase(apiBase: string) {
@@ -20,7 +19,7 @@ function getWsBase(apiBase: string) {
 }
 
 const WS_BASE = getWsBase(API_BASE);
-const wsAvailable = Boolean(WS_BASE) && !apiBaseLooksVercel && !runtimeOnVercel;
+const wsAvailable = Boolean(WS_BASE) && !apiBaseLooksVercel;
 
 interface Scenario {
   id: string;
