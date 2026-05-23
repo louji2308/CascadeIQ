@@ -24,13 +24,14 @@ app.get('/api/debug', (req, res) => {
 });
 app.get('/api/scenarios', async(req, res) => {
     try {
-        const records = await runQuery(`
+const records = await runQuery(`
   MATCH (s:Scenario)
   RETURN s.id AS id, 
          s.name AS name, 
          toInteger(s.year) AS year,
          s.location AS location, 
          toInteger(s.deaths) AS deaths,
+         s.damage_usd AS damage_usd,
          s.description AS description
   ORDER BY s.year DESC
 `);
@@ -99,7 +100,7 @@ app.get('/api/cascade/:hazardId', async(req, res) => {
         [n IN ns | {id: n.id, name: n.name, label: labels(n)[0], severity: toInteger(n.severity)}] AS nodes,
         [r IN rs | {from: startNode(r).id, to: endNode(r).id, type: type(r), prob: r.prob, delay_hrs: r.delay_hrs, mechanism: r.mechanism}] AS edges,
         length(path) AS depth,
-        round(cascade_prob * 100, 1) AS probability_pct,
+        round(cascade_prob * 1000) / 10.0 AS probability_pct,
         total_delay AS hours_to_end
       ORDER BY cascade_prob DESC
       LIMIT 15
@@ -114,6 +115,7 @@ app.get('/api/cascade/:hazardId', async(req, res) => {
         res.json({
             success: true,
             riskScore,
+            pathCount: paths.length, 
             paths,
             nodes: firstPath.nodes,
             edges: firstPath.edges,
@@ -480,7 +482,7 @@ if (require.main === module) {
         [n IN ns | {id: n.id, name: n.name, label: labels(n)[0], severity: toInteger(n.severity)}] AS nodes,
         [r IN rs | {from: startNode(r).id, to: endNode(r).id, type: type(r), prob: r.prob, delay_hrs: r.delay_hrs, mechanism: r.mechanism}] AS edges,
         length(path) AS depth,
-        round(cascade_prob * 100, 1) AS probability_pct,
+        round(cascade_prob * 1000) / 10.0 AS probability_pct,
         total_delay AS hours_to_end
       ORDER BY cascade_prob DESC
       LIMIT 15
@@ -502,7 +504,7 @@ if (require.main === module) {
 
                     nodes.forEach((node, i) => {
                         const previousEdge = i === 0 ? null : edges[i - 1];
-                        const delay = i === 0 ? 0 : Number(previousEdge ? .delay_hrs || 0) * 600;
+                        const delay = i === 0 ? 0 : Number(previousEdge?.delay_hrs || 0) * 600;
                         accumulatedDelay += delay;
 
                         const timer = setTimeout(() => {
@@ -518,7 +520,7 @@ if (require.main === module) {
                                     },
                                     step: i,
                                     total: nodes.length,
-                                    mechanism: previousEdge ? .mechanism || null
+                                    mechanism: previousEdge?.mechanism || null
                                 }));
                             }
 

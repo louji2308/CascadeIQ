@@ -460,6 +460,7 @@ export default function App() {
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const simStartRef = useRef<number>(0);
   const simIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const abortRef = useRef<AbortController | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const selectedScenario = useMemo(
     () => scenarios.find(s => s.id === selectedId) || null,
@@ -467,16 +468,23 @@ export default function App() {
   );
 
   const fetchCascade = useCallback(async (scenarioId: string, removed: string[]) => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
+
     setLoading(true);
     setError(null);
     setCascadeData(null);
 
     try {
       if (scenarioId === 'live_wildfires_satellite') {
-        await axios.get(`${API_BASE}/api/realtime/wildfires`);
+        await axios.get(`${API_BASE}/api/realtime/wildfires`, { signal });
+        if (signal.aborted) return;
       }
 
-      const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`);
+      const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`, { signal });
+      if (signal.aborted) return;
+      
       const records = scenRes.data.data;
       const hazardRec = records.find(r => r.node?.label === 'Hazard');
       if (!hazardRec?.node) throw new Error('No hazard node found');
@@ -484,7 +492,9 @@ export default function App() {
       const hazardId = hazardRec.node.id;
       const cascRes = await axios.get<CascadeResponse>(`${API_BASE}/api/cascade/${hazardId}`, {
         params: { removed: removed.join(',') },
+        signal,
       });
+      if (signal.aborted) return;
 
       const paths: CascadePath[] = cascRes.data.paths || [];
       const nodeMap = new Map<string, CascadeNode>();
@@ -516,6 +526,7 @@ export default function App() {
       });
       setSelectedPath(0);
     } catch (e: unknown) {
+      if (axios.isCancel(e)) return;
       setError(getErrorMessage(e));
     } finally {
       setLoading(false);
