@@ -13,16 +13,21 @@
     --bg-panel-alt: #0c1320;
     --bg-hover: rgba(255, 95, 31, 0.06);
     --orange: #FF5F1F;
+    --orange-bright: #FF7A3D;
     --orange-dim: rgba(255, 95, 31, 0.6);
     --orange-glow: rgba(255, 95, 31, 0.15);
     --orange-trace: rgba(255, 95, 31, 0.05);
     --cyan: #00CFFF;
+    --cyan-bright: #33E0FF;
     --cyan-dim: rgba(0, 207, 255, 0.5);
     --cyan-glow: rgba(0, 207, 255, 0.1);
     --green: #00E676;
+    --green-dim: rgba(0, 230, 118, 0.6);
     --amber: #FFD740;
     --red: #FF3D3D;
+    --red-dim: rgba(255, 61, 61, 0.6);
     --purple: #A78BFA;
+    --purple-dim: rgba(167, 139, 250, 0.5);
     --text-primary: #F0F4FF;
     --text-secondary: #7B8FAB;
     --text-muted: #3D4F66;
@@ -34,6 +39,7 @@
     --font-display: 'Rajdhani', 'Arial Narrow', sans-serif;
     --font-body: 'DM Sans', system-ui, sans-serif;
     --font-mono: 'Share Tech Mono', 'Courier New', monospace;
+    --font-tech: 'Orbitron', 'Rajdhani', sans-serif;
     --panel-radius: 4px;
     --glow-orange: 0 0 20px rgba(255, 95, 31, 0.08), 0 0 0 1px rgba(255, 95, 31, 0.12);
     --glow-cyan: 0 0 20px rgba(0, 207, 255, 0.06), 0 0 0 1px rgba(0, 207, 255, 0.12);
@@ -76,6 +82,9 @@ body,
     color: #fff;
 }
 
+
+/* ANIMATION SYSTEM */
+
 @keyframes pulse-ring {
     0% {
         opacity: 1;
@@ -107,14 +116,43 @@ body,
     }
 }
 
+@keyframes scan-v {
+    0% {
+        transform: translateY(-100%);
+    }
+    100% {
+        transform: translateY(400%);
+    }
+}
+
 @keyframes fade-in-up {
     from {
         opacity: 0;
-        transform: translateY(8px);
+        transform: translateY(12px);
     }
     to {
         opacity: 1;
         transform: translateY(0);
+    }
+}
+
+@keyframes fade-in-scale {
+    from {
+        opacity: 0;
+        transform: scale(0.92);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes shimmer {
+    0% {
+        background-position: -200% 0;
+    }
+    100% {
+        background-position: 200% 0;
     }
 }
 
@@ -130,33 +168,136 @@ body,
     }
 }
 
-@keyframes risk-fill {
-    from {
-        stroke-dashoffset: 502;
-    }
-}
-
 @keyframes glow-pulse {
     0%,
     100% {
         box-shadow: var(--glow-orange);
     }
     50% {
-        box-shadow: 0 0 30px rgba(255, 95, 31, 0.15), 0 0 0 1px rgba(255, 95, 31, 0.2);
+        box-shadow: 0 0 40px rgba(255, 95, 31, 0.2), 0 0 0 1px rgba(255, 95, 31, 0.25);
+    }
+}
+
+@keyframes glitch {
+    0% {
+        clip-path: inset(40% 0 61% 0);
+        transform: translate(-2px, 1px);
+    }
+    20% {
+        clip-path: inset(92% 0 1% 0);
+        transform: translate(1px, -1px);
+    }
+    40% {
+        clip-path: inset(43% 0 1% 0);
+        transform: translate(-1px, 2px);
+    }
+    60% {
+        clip-path: inset(25% 0 58% 0);
+        transform: translate(2px, 1px);
+    }
+    80% {
+        clip-path: inset(54% 0 7% 0);
+        transform: translate(-1px, -1px);
+    }
+    100% {
+        clip-path: inset(58% 0 43% 0);
+        transform: translate(0);
+    }
+}
+
+@keyframes matrix-rain {
+    0% {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    10% {
+        opacity: 1;
+    }
+    90% {
+        opacity: 1;
+    }
+    100% {
+        transform: translateY(100vh);
+        opacity: 0;
     }
 }
 
 @keyframes node-appear {
     0% {
         opacity: 0;
-        transform: scale(0.5);
+        transform: scale(0.3);
     }
     60% {
-        transform: scale(1.15);
+        transform: scale(1.2);
     }
     100% {
         opacity: 1;
         transform: scale(1);
+    }
+}
+
+@keyframes pulse-soft {
+    0%,
+    100% {
+        opacity: 0.6;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+@keyframes orbit {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes typing-cursor {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0;
+    }
+}
+
+
+/* BOOT SEQUENCE */
+
+@keyframes boot-progress {
+    from {
+        width: 0%;
+    }
+    to {
+        width: 100%;
+    }
+}
+
+@keyframes boot-fade {
+    0% {
+        opacity: 1;
+    }
+    80% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+@keyframes boot-text-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(6px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
     }
 }
 

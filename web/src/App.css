@@ -5,10 +5,154 @@
     background: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(255, 95, 31, 0.07) 0%, transparent 60%), linear-gradient(rgba(255, 95, 31, 0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 95, 31, 0.025) 1px, transparent 1px), var(--bg-void);
     background-size: auto, 48px 48px, 48px 48px;
     overflow: hidden;
+    position: relative;
 }
 
 
-/* ── HEADER ───────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   BOOT SCREEN
+   ═══════════════════════════════════════════════════ */
+
+.boot-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg-void);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    animation: boot-fade 3.2s ease forwards;
+    animation-delay: 2.2s;
+}
+
+.boot-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+    max-width: 420px;
+    text-align: center;
+}
+
+.boot-logo {
+    width: 72px;
+    height: 72px;
+    position: relative;
+    animation: fade-in-scale 0.6s ease;
+}
+
+.boot-logo svg {
+    width: 100%;
+    height: 100%;
+}
+
+.boot-logo::after {
+    content: '';
+    position: absolute;
+    inset: -12px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 95, 31, 0.12) 0%, transparent 70%);
+    animation: pulse-soft 2s ease-in-out infinite;
+}
+
+.boot-title {
+    font-family: var(--font-tech);
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    color: var(--text-primary);
+    animation: boot-text-reveal 0.5s ease 0.1s both;
+}
+
+.boot-title span {
+    color: var(--orange);
+    text-shadow: 0 0 30px rgba(255, 95, 31, 0.3);
+}
+
+.boot-subtitle {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 4px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    animation: boot-text-reveal 0.5s ease 0.3s both;
+}
+
+.boot-progress-track {
+    width: 100%;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 1px;
+    overflow: hidden;
+    animation: boot-text-reveal 0.5s ease 0.5s both;
+}
+
+.boot-progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--orange), var(--cyan));
+    border-radius: 1px;
+    animation: boot-progress 1.8s ease-in-out forwards;
+    animation-delay: 0.6s;
+}
+
+.boot-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    animation: boot-text-reveal 0.5s ease 0.6s both;
+}
+
+.boot-line {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+    text-align: left;
+    opacity: 0;
+}
+
+.boot-line:nth-child(1) {
+    animation: boot-text-reveal 0.3s ease 0.8s both;
+}
+
+.boot-line:nth-child(2) {
+    animation: boot-text-reveal 0.3s ease 1.0s both;
+}
+
+.boot-line:nth-child(3) {
+    animation: boot-text-reveal 0.3s ease 1.2s both;
+}
+
+.boot-line:nth-child(4) {
+    animation: boot-text-reveal 0.3s ease 1.4s both;
+}
+
+.boot-line:nth-child(5) {
+    animation: boot-text-reveal 0.3s ease 1.6s both;
+}
+
+.boot-line:nth-child(6) {
+    animation: boot-text-reveal 0.3s ease 1.8s both;
+}
+
+.boot-line .ok {
+    color: var(--green);
+}
+
+.boot-line .warn {
+    color: var(--amber);
+}
+
+.boot-line .info {
+    color: var(--cyan-dim);
+}
+
+
+/* ═══════════════════════════════════════════════════
+   HEADER
+   ═══════════════════════════════════════════════════ */
 
 .dash-header {
     flex-shrink: 0;
@@ -33,6 +177,17 @@
     pointer-events: none;
 }
 
+.dash-header::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--orange-dim), transparent);
+    opacity: 0.4;
+}
+
 .header-logo {
     display: flex;
     align-items: center;
@@ -50,25 +205,35 @@
     height: 100%;
 }
 
+.logo-mark.glowing::before {
+    content: '';
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(255, 95, 31, 0.3) 0%, transparent 70%);
+    animation: pulse-soft 1.5s ease-in-out infinite;
+}
+
 .logo-text {
-    font-family: var(--font-display);
-    font-size: 22px;
+    font-family: var(--font-tech);
+    font-size: 20px;
     font-weight: 700;
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     color: var(--text-primary);
 }
 
 .logo-text span {
     color: var(--orange);
+    text-shadow: 0 0 20px rgba(255, 95, 31, 0.3);
 }
 
 .logo-sub {
     font-family: var(--font-mono);
-    font-size: 9px;
+    font-size: 8px;
     color: var(--text-muted);
-    letter-spacing: 2px;
+    letter-spacing: 3px;
     text-transform: uppercase;
-    margin-top: -2px;
+    margin-top: -1px;
 }
 
 .header-center {
@@ -144,10 +309,13 @@
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 1px;
+    transition: color 0.6s ease;
 }
 
 
-/* ── BODY ─────────────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   BODY LAYOUT
+   ═══════════════════════════════════════════════════ */
 
 .dash-body {
     flex: 1;
@@ -159,7 +327,7 @@
 }
 
 
-/* ── PANELS ───────────────────────────────────────── */
+/* ── PANELS ── */
 
 .left-panel,
 .right-panel {
@@ -210,7 +378,7 @@
 }
 
 
-/* ── SCENARIO SELECT ──────────────────────────────── */
+/* ── SCENARIO SELECT ── */
 
 .scenario-select-wrap {
     position: relative;
@@ -228,12 +396,13 @@
     cursor: pointer;
     appearance: none;
     -webkit-appearance: none;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s, box-shadow 0.2s;
 }
 
 .scenario-select-wrap select:focus {
     outline: none;
     border-color: rgba(255, 95, 31, 0.4);
+    box-shadow: 0 0 12px rgba(255, 95, 31, 0.08);
 }
 
 .scenario-select-wrap::after {
@@ -253,7 +422,7 @@
 }
 
 
-/* ── SCENARIO INFO CARD ───────────────────────────── */
+/* ── SCENARIO CARD ── */
 
 .scenario-card {
     margin-top: 12px;
@@ -262,6 +431,19 @@
     border: 1px solid rgba(255, 95, 31, 0.1);
     border-radius: var(--panel-radius);
     animation: fade-in-up 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.scenario-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 2px;
+    height: 100%;
+    background: linear-gradient(180deg, var(--orange), transparent);
+    opacity: 0.5;
 }
 
 .scenario-card-name {
@@ -292,6 +474,11 @@
     padding: 8px;
     border-radius: 3px;
     border: 1px solid var(--border-subtle);
+    transition: border-color 0.2s;
+}
+
+.stat-item:hover {
+    border-color: rgba(255, 95, 31, 0.2);
 }
 
 .stat-val {
@@ -311,7 +498,7 @@
 }
 
 
-/* ── SYSTEM INDICATORS ────────────────────────────── */
+/* ── SYSTEM INDICATORS ── */
 
 .sys-indicators {
     display: flex;
@@ -327,6 +514,7 @@
     font-size: 10px;
     color: var(--text-secondary);
     letter-spacing: 0.5px;
+    padding: 2px 0;
 }
 
 .sys-indicator-bar {
@@ -335,22 +523,27 @@
     background: rgba(255, 255, 255, 0.06);
     border-radius: 2px;
     overflow: hidden;
+    flex-shrink: 0;
 }
 
 .sys-indicator-fill {
     height: 100%;
     border-radius: 2px;
     animation: data-in 1s ease;
+    transition: width 1s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 
-/* ── CENTER PANEL ─────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   CENTER PANEL - GRAPH AREA
+   ═══════════════════════════════════════════════════ */
 
 .center-panel {
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background: var(--bg-deep);
+    position: relative;
 }
 
 .graph-header {
@@ -404,6 +597,15 @@
     position: absolute;
     inset: 0;
     background: radial-gradient(ellipse 50% 60% at 50% 50%, rgba(0, 207, 255, 0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.graph-wrap::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient( 0deg, transparent, transparent 2px, rgba(255, 255, 255, 0.01) 2px, rgba(255, 255, 255, 0.01) 4px);
     pointer-events: none;
     z-index: 1;
 }
@@ -464,6 +666,9 @@
     background: transparent !important;
 }
 
+
+/* ── GRAPH FOOTER ── */
+
 .graph-footer {
     flex-shrink: 0;
     display: flex;
@@ -498,6 +703,11 @@
     height: 8px;
     border-radius: 50%;
     flex-shrink: 0;
+    transition: transform 0.2s;
+}
+
+.legend-item:hover .legend-dot {
+    transform: scale(1.5);
 }
 
 .simulate-btn {
@@ -548,7 +758,9 @@
 }
 
 
-/* ── RISK GAUGE ───────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   RISK GAUGE
+   ═══════════════════════════════════════════════════ */
 
 .risk-gauge-wrap {
     display: flex;
@@ -570,19 +782,13 @@
     stroke-linecap: round;
 }
 
-.risk-arc-fill {
-    stroke-width: 8;
-    fill: none;
-    stroke-linecap: round;
-    transition: stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.6s ease;
-}
-
 .risk-num {
     font-family: var(--font-mono);
     font-size: 36px;
     font-weight: 700;
     fill: var(--text-primary);
     text-anchor: middle;
+    transition: fill 0.6s ease;
 }
 
 .risk-label-svg {
@@ -606,7 +812,9 @@
 }
 
 
-/* ── CASCADE PATHS ────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   CASCADE PATHS
+   ═══════════════════════════════════════════════════ */
 
 .path-list {
     display: flex;
@@ -620,13 +828,14 @@
     border: 1px solid var(--border-subtle);
     border-radius: var(--panel-radius);
     cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color 0.2s, background 0.2s, transform 0.15s;
     animation: fade-in-up 0.3s ease both;
 }
 
 .path-item:hover {
     border-color: rgba(255, 95, 31, 0.25);
     background: var(--bg-hover);
+    transform: translateX(2px);
 }
 
 .path-item.active {
@@ -668,7 +877,7 @@
 .path-bar {
     height: 100%;
     border-radius: 1px;
-    background: var(--orange);
+    background: linear-gradient(90deg, var(--orange), var(--orange-bright));
     animation: data-in 0.8s ease;
 }
 
@@ -693,7 +902,9 @@
 }
 
 
-/* ── NODE DETAIL ──────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   NODE DETAIL
+   ═══════════════════════════════════════════════════ */
 
 .node-detail {
     padding: 12px;
@@ -744,7 +955,9 @@
 }
 
 
-/* ── CONTROL PANEL ────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   CONTROL LIST (Mitigation)
+   ═══════════════════════════════════════════════════ */
 
 .control-list {
     display: flex;
@@ -766,6 +979,7 @@
 
 .control-item:hover {
     border-color: rgba(255, 95, 31, 0.2);
+    background: rgba(255, 95, 31, 0.03);
 }
 
 .control-checkbox {
@@ -838,7 +1052,9 @@
 }
 
 
-/* ── EMPTY / LOADING / ERROR ──────────────────────── */
+/* ═══════════════════════════════════════════════════
+   EMPTY / LOADING / ERROR STATES
+   ═══════════════════════════════════════════════════ */
 
 .empty-state {
     display: flex;
@@ -928,16 +1144,148 @@
     line-height: 1.6;
 }
 
-
-/* ── SCROLLABLE BLOCKS ────────────────────────────── */
-
 .left-panel .panel-block.grow,
 .right-panel .panel-block.grow {
     overflow-y: auto;
 }
 
 
-/* ── RESPONSIVE ───────────────────────────────────── */
+/* ═══════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════ */
+
+
+/* ═══════════════════════════════════════════════════
+   SIMULATION TIMELINE
+   ═══════════════════════════════════════════════════ */
+
+.sim-timeline {
+    flex-shrink: 0;
+    padding: 10px 16px;
+    background: rgba(6, 10, 18, 0.95);
+    border-top: 1px solid var(--border-panel);
+    animation: fade-in-up 0.3s ease;
+}
+
+.sim-timeline-compact {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.sim-timeline-bar-track {
+    position: relative;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 2px;
+    overflow: visible;
+}
+
+.sim-timeline-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--orange), var(--cyan));
+    border-radius: 2px;
+    transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+}
+
+.sim-timeline-bar-fill::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--orange);
+    box-shadow: 0 0 8px rgba(255, 95, 31, 0.5);
+    animation: pulse-soft 1s ease-in-out infinite;
+}
+
+.sim-timeline-dot {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    background: rgba(6, 10, 18, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    z-index: 2;
+}
+
+.sim-timeline-dot.active {
+    border-width: 2px;
+}
+
+.sim-timeline-dot.current {
+    width: 16px;
+    height: 16px;
+    border-width: 3px;
+    box-shadow: 0 0 12px rgba(255, 95, 31, 0.3);
+    animation: pulse-soft 0.8s ease-in-out infinite;
+}
+
+.sim-timeline-dot-inner {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    transition: all 0.3s ease;
+}
+
+.sim-timeline-dot.current .sim-timeline-dot-inner {
+    width: 7px;
+    height: 7px;
+}
+
+.sim-timeline-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-family: var(--font-mono);
+    font-size: 10px;
+}
+
+.sim-timeline-step {
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+.sim-timeline-node {
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    transition: color 0.3s ease;
+}
+
+.sim-status-bar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sim-elapsed {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--cyan-dim);
+    letter-spacing: 1px;
+    padding: 3px 8px;
+    border: 1px solid rgba(0, 207, 255, 0.2);
+    border-radius: 2px;
+    background: rgba(0, 207, 255, 0.04);
+}
+
+
+/* Path item while sim is active */
+
+.path-item.sim-active {
+    border-color: rgba(255, 95, 31, 0.5);
+    background: rgba(255, 95, 31, 0.08);
+    animation: glow-pulse 1.5s ease infinite;
+}
 
 @media (max-width: 1100px) {
     .dash-body {
@@ -950,7 +1298,6 @@
         height: 100dvh;
         overflow-y: auto;
     }
-
     .dash-header {
         height: auto;
         min-height: 64px;
@@ -958,65 +1305,47 @@
         gap: 12px;
         padding: 12px 14px;
     }
-
     .header-center,
     .header-right {
         gap: 10px;
         flex-wrap: wrap;
     }
-
     .header-center {
         order: 3;
         width: 100%;
         justify-content: space-between;
     }
-
     .dash-body {
         display: flex;
         flex-direction: column;
         overflow: visible;
         min-height: auto;
     }
-
     .left-panel,
     .right-panel {
         border: 0;
         overflow: visible;
     }
-
     .center-panel {
         min-height: 58dvh;
         border-top: 1px solid var(--border-panel);
         border-bottom: 1px solid var(--border-panel);
     }
-
     .graph-header,
     .graph-footer {
         align-items: flex-start;
         flex-direction: column;
     }
-
     .graph-meta {
         gap: 10px;
         flex-wrap: wrap;
     }
-
     .graph-wrap {
         min-height: 460px;
     }
-
     .panel-block.grow {
         max-height: none;
         overflow: visible;
-    }
-
-    .right-panel {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    }
-
-    .right-panel .panel-block.grow {
-        grid-column: 1 / -1;
     }
 }
 
@@ -1024,51 +1353,28 @@
     .logo-text {
         font-size: 19px;
     }
-
     .logo-sub,
     .sys-clock {
         font-size: 9px;
     }
-
     .threat-level {
         padding: 5px 10px;
         letter-spacing: 1px;
     }
-
     .graph-wrap {
         min-height: 390px;
     }
-
     .graph-coords {
         width: calc(100% - 32px);
         text-align: center;
         white-space: normal;
         line-height: 1.5;
     }
-
     .legend {
         gap: 8px;
     }
-
     .simulate-btn {
         width: 100%;
         justify-content: center;
-    }
-
-    .right-panel {
-        display: flex;
-    }
-
-    .path-header-row,
-    .node-detail-row,
-    .sys-indicator {
-        gap: 8px;
-    }
-
-    .path-chain,
-    .control-item-name,
-    .node-detail-row .val {
-        white-space: normal;
-        overflow-wrap: anywhere;
     }
 }
