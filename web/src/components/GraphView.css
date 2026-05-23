@@ -19,8 +19,11 @@
 /* Active simulation glow pulse */
 
 .sigma-container.sim-active {
-    animation: sim-container-pulse 2s ease-in-out infinite;
+    animation: sim-container-pulse 2.2s ease-in-out infinite;
     z-index: 5;
+    /* subtle layered glow to match node highlights */
+    box-shadow: 0 10px 40px rgba(255, 95, 31, 0.04), inset 0 0 60px rgba(255, 95, 31, 0.02);
+    transition: filter 220ms ease, box-shadow 220ms ease;
 }
 
 @keyframes sim-container-pulse {
@@ -31,6 +34,21 @@
     50% {
         filter: brightness(1.08);
     }
+}
+
+
+/* subtle overlay to emphasize running simulation without UI chrome */
+
+.sigma-container.sim-active::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(circle at 30% 20%, rgba(255, 95, 31, 0.03), transparent 15%), radial-gradient(circle at 70% 80%, rgba(0, 207, 255, 0.02), transparent 18%);
+    mix-blend-mode: screen;
+    transition: opacity 300ms ease;
+    opacity: 1;
+    z-index: 3;
 }
 
 
@@ -50,56 +68,61 @@
 }
 
 
-/* ── PREMIUM NODE TOOLTIP ── */
+/* ─────────────────────────────────────────────────────────
+   PREMIUM NODE TOOLTIP — Military Intelligence Aesthetic
+   ───────────────────────────────────────────────────────── */
 
 .graph-tooltip {
     position: absolute;
-    background: rgba(6, 10, 20, 0.97);
-    border: 1px solid rgba(255, 95, 31, 0.35);
-    border-radius: 6px;
-    padding: 10px 14px;
+    background: #070b10;
+    border: 1px solid #1e3248;
+    clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+    padding: 12px 14px;
     pointer-events: none;
     z-index: 999;
-    max-width: 220px;
-    min-width: 140px;
-    backdrop-filter: blur(12px) saturate(1.4);
-    -webkit-backdrop-filter: blur(12px) saturate(1.4);
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 95, 31, 0.08), 0 0 40px rgba(255, 95, 31, 0.05);
-    animation: tooltip-appear 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    max-width: 240px;
+    min-width: 160px;
+    box-shadow: 0 4px 32px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(30, 50, 72, 0.6);
+    animation: tooltip-fade-in 0.2s ease-out forwards;
+    position: relative;
+    overflow: hidden;
 }
 
-.graph-tooltip::before {
-    content: '';
-    position: absolute;
-    top: -3px;
-    left: 50%;
-    transform: translateX(-50%) rotate(45deg);
-    width: 6px;
-    height: 6px;
-    background: rgba(6, 10, 20, 0.97);
-    border-left: 1px solid rgba(255, 95, 31, 0.35);
-    border-top: 1px solid rgba(255, 95, 31, 0.35);
-}
-
-.graph-tooltip::after {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    border-radius: 7px;
-    background: linear-gradient(135deg, rgba(255, 95, 31, 0.08), transparent 40%, rgba(0, 207, 255, 0.04));
-    pointer-events: none;
-    z-index: -1;
-}
-
-@keyframes tooltip-appear {
+@keyframes tooltip-fade-in {
     from {
         opacity: 0;
-        transform: translateY(4px) scale(0.96);
+        transform: translate(-50%, -8px) scale(0.95);
     }
     to {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translate(-50%, 0) scale(1);
     }
+}
+
+.graph-tooltip-scan-line {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(30, 220, 255, 0.6), transparent);
+    animation: scan-line-sweep 2s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes scan-line-sweep {
+    0% {
+        transform: translateY(0);
+    }
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+.graph-tooltip-header {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(30, 50, 72, 0.8);
 }
 
 .graph-tooltip-name {
@@ -107,35 +130,86 @@
     font-size: 14px;
     font-weight: 700;
     color: rgba(240, 244, 255, 0.98);
-    margin-bottom: 4px;
-    line-height: 1.3;
-    letter-spacing: 0.3px;
+    margin-bottom: 6px;
+    line-height: 1.2;
+    letter-spacing: 0.4px;
 }
 
-.graph-tooltip-type {
-    font-family: 'Share Tech Mono', 'Courier New', monospace;
-    font-size: 9px;
-    letter-spacing: 2px;
+.graph-tooltip-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Space Mono', 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1.5px;
     text-transform: uppercase;
-    margin-bottom: 6px;
-    font-weight: 500;
-    opacity: 0.9;
+    font-weight: 600;
+    padding: 4px 8px;
+    border-radius: 2px;
+    color: rgba(240, 244, 255, 0.9);
+}
+
+.graph-tooltip-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 
 .graph-tooltip-row {
     display: flex;
     justify-content: space-between;
-    gap: 16px;
-    font-family: 'Share Tech Mono', 'Courier New', monospace;
+    align-items: center;
+    gap: 12px;
+    font-family: 'Space Mono', 'Share Tech Mono', monospace;
     font-size: 10px;
-    color: rgba(0, 207, 255, 0.75);
-    padding-top: 5px;
-    border-top: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.graph-tooltip-row span:last-child {
+.graph-tooltip-label {
+    color: rgba(180, 210, 240, 0.7);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 500;
+    flex: 0 0 auto;
+    min-width: 80px;
+}
+
+.graph-tooltip-bar-container {
+    flex: 1;
+    height: 6px;
+    background: rgba(30, 50, 72, 0.6);
+    border-radius: 1px;
+    overflow: hidden;
+    border: 1px solid rgba(30, 50, 72, 0.9);
+}
+
+.graph-tooltip-progress-bar {
+    height: 100%;
+    border-radius: 0.5px;
+    box-shadow: 0 0 8px currentColor;
+    transition: width 0.3s ease;
+}
+
+.graph-tooltip-value {
+    color: rgba(0, 207, 255, 0.9);
     font-weight: 600;
-    color: rgba(0, 207, 255, 0.95);
+    text-align: right;
+}
+
+.graph-tooltip-footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Space Mono', 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: rgba(180, 210, 240, 0.6);
+    padding-top: 8px;
+    border-top: 1px solid rgba(30, 50, 72, 0.6);
+    letter-spacing: 0.5px;
+}
+
+.graph-tooltip-location {
+    text-transform: uppercase;
 }
 
 
@@ -237,7 +311,7 @@
     .graph-tooltip-name {
         font-size: 11px;
     }
-    .graph-tooltip-type {
+    .graph-tooltip-type-badge {
         font-size: 8px;
     }
 }

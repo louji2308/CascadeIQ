@@ -41,22 +41,6 @@ const DIM_COLOR = 'rgba(18,24,42,0.85)';
 const PATH_EDGE_COLOR = '#FF5F1F';
 const PATH_GLOW_EDGE = 'rgba(255,95,31,0.3)';
 
-/* ── Color interpolation helper ── */
-function lerpColor(a: string, b: string, t: number): string {
-  const parse = (c: string) => {
-    const m = c.match(/^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
-    if (m) return [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)];
-    const r = c.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-    if (r) return [+r[1], +r[2], +r[3]];
-    return [200,200,200];
-  };
-  const ca = parse(a), cb = parse(b);
-  const r = Math.round(ca[0] + (cb[0]-ca[0])*t);
-  const g = Math.round(ca[1] + (cb[1]-ca[1])*t);
-  const bl = Math.round(ca[2] + (cb[2]-ca[2])*t);
-  return `rgb(${r},${g},${bl})`;
-}
-
 /* ── Easing ── */
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
@@ -70,10 +54,13 @@ const GraphView: React.FC<GraphViewProps> = ({
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const nodesDataRef = useRef<Node[]>([]);
-  const [tooltip, setTooltip] = useState<{ node: Node; x: number; y: number } | null>(null);
+  const [tooltip, setTooltip] = useState<{ node: Node; x: number; y: number; color: string } | null>(null);
   const animFrameRef = useRef<number>(0);
   const edgeParticlesRef = useRef<Map<string, number>>(new Map());
   const hoveredNodeRef = useRef<string | null>(null);
+  const hoveredNodeColorRef = useRef<string>('#FF5F1F');
+  const connectedNodesRef = useRef<Set<string>>(new Set());
+  const connectedEdgesRef = useRef<Set<string>>(new Set());
   const simHighlightedRef = useRef<Set<string>>(new Set());
 
   // ── Smooth hover animation system ──
@@ -81,6 +68,9 @@ const GraphView: React.FC<GraphViewProps> = ({
   const hoverAnimFrameRef = useRef<number>(0);
   const hoverAnimRunningRef = useRef<boolean>(false);
   const lastHoveredNodeRef = useRef<string | null>(null); // track which node to animate out
+  // Click pulse animation
+  const clickedNodesRef = useRef<Map<string, number>>(new Map()); // nodeId -> startTime
+  const clickAnimFrameRef = useRef<number>(0);
 
   const startHoverAnim = useCallback(() => {
     if (hoverAnimRunningRef.current) return;
@@ -110,6 +100,30 @@ const GraphView: React.FC<GraphViewProps> = ({
     };
 
     hoverAnimFrameRef.current = requestAnimationFrame(tick);
+  }, []);
+
+  const CLICK_PULSE_DURATION = 600; // ms
+  const startClickLoop = useCallback(() => {
+    if (clickAnimFrameRef.current) return;
+
+    const tick = () => {
+      // Remove expired clicks
+      const now = performance.now();
+      for (const [node, t] of Array.from(clickedNodesRef.current.entries())) {
+        if (now - t > CLICK_PULSE_DURATION) clickedNodesRef.current.delete(node);
+      }
+
+      if (sigmaRef.current) sigmaRef.current.refresh();
+
+      if (clickedNodesRef.current.size > 0) {
+        clickAnimFrameRef.current = requestAnimationFrame(tick);
+      } else {
+        cancelAnimationFrame(clickAnimFrameRef.current);
+        clickAnimFrameRef.current = 0;
+      }
+    };
+
+    clickAnimFrameRef.current = requestAnimationFrame(tick);
   }, []);
 
   // ── Build / rebuild graph on nodes/edges change ──
@@ -170,6 +184,7 @@ const GraphView: React.FC<GraphViewProps> = ({
     try {
       const nodeReducer = (node: string, data: Record<string, unknown>) => {
         const isHovered = hoveredNodeRef.current === node;
+        const isConnected = connectedNodesRef.current.has(node);
         const isSimHighlighted = simHighlightedRef.current.has(node);
         const baseColor = data.originalColor as string;
         const baseSize = data.originalSize as number;
@@ -179,36 +194,58 @@ const GraphView: React.FC<GraphViewProps> = ({
         let size = baseSize;
         let borderColor = 'transparent';
         let borderSize = 0;
-        let forceLabel = false;
         let labelSize = 11;
-        let labelColorObj = { color: 'rgba(180,190,210,0.6)' };
+        let labelOpacity = 0;
 
-        // Only apply hover transition to hovered node OR the last hovered node fading out
+        // Apply hover state with original color preservation
         const isLeavingHover = !isHovered && lastHoveredNodeRef.current === node && progress > 0;
         if (isHovered || isLeavingHover) {
-          // Smoothly interpolate toward hover state
           const p = isHovered ? Math.max(progress, 0.05) : (1 - progress);
-          color = isHovered
-            ? lerpColor(baseColor, '#FFFFFF', easeOutCubic(p))
-            : lerpColor('#FFFFFF', baseColor, easeOutCubic(1 - progress));
-          size = baseSize * (1 + p * 1.2);
-          borderColor = `rgba(255,95,31,${p * 1})`;
-          borderSize = p * 4;
-          forceLabel = true;
-          labelSize = 11 + p * 3;
-          labelColorObj = {
-            color: isHovered
-              ? `rgba(255,255,255,${0.6 + p * 0.4})`
-              : `rgba(180,190,210,${0.6 - (1 - progress) * 0.5})`,
-          };
-        } else if (isSimHighlighted) {
+          color = baseColor; // Keep original color
+          size = baseSize * (1 + p * 0.15); // Scale by 1.15x at full progress
+          // Glow effect using layered border and color intensity
+          borderColor = baseColor;
+          borderSize = p * 3; // Glow radius
+          labelSize = 11 + p * 2;
+          labelOpacity = isHovered ? (0.6 + p * 0.4) : (0.6 - (1 - progress) * 0.5);
+        } else if (isConnected && !isHovered) {
+          // Connected nodes stay at full opacity during hover of another node
+          color = baseColor;
+          labelOpacity = 0;
+        } else if (!hoveredNodeRef.current) {
+          // No hover at all
+          color = baseColor;
+          labelOpacity = 0;
+        } else {
+          // Unconnected node when another is hovered
+          const [r, g, b] = [parseInt(baseColor.slice(1, 3), 16), parseInt(baseColor.slice(3, 5), 16), parseInt(baseColor.slice(5, 7), 16)];
+          color = `rgba(${r}, ${g}, ${b}, 0.2)`;
+          labelOpacity = 0;
+        }
+
+        if (isSimHighlighted) {
           size = baseSize * 1.6;
           color = baseColor;
           borderColor = 'rgba(255,95,31,0.8)';
           borderSize = 3;
-          forceLabel = true;
           labelSize = 11;
-          labelColorObj = { color: 'rgba(180,190,210,0.6)' };
+          labelOpacity = 0.6;
+        }
+
+        // Click pulse overlay (transient)
+        const clickStart = clickedNodesRef.current.get(node);
+        if (clickStart) {
+          const now = performance.now();
+          const elapsed = now - clickStart;
+          if (elapsed < CLICK_PULSE_DURATION) {
+            const pClick = 1 - Math.min(1, elapsed / CLICK_PULSE_DURATION);
+            const pulse = easeOutCubic(pClick);
+            size = size + baseSize * (pulse * 0.9);
+            borderSize = Math.max(borderSize, pulse * 6);
+            borderColor = `rgba(255,95,31,${Math.min(0.95, pulse * 0.95)})`;
+            labelSize = Math.max(labelSize, 12 + pulse * 4);
+            labelOpacity = 0.65 + pulse * 0.35;
+          }
         }
 
         return {
@@ -217,18 +254,35 @@ const GraphView: React.FC<GraphViewProps> = ({
           size,
           borderColor,
           borderSize,
-          forceLabel,
-          label: forceLabel ? (data.label as string) : '',
-          labelFont: "'Share Tech Mono', monospace",
+          label: data.label as string,
+          labelFont: "'Rajdhani', 'DM Sans', system-ui, sans-serif",
           labelSize,
-          labelColor: labelColorObj,
+          labelColor: { color: `rgba(255,255,255,${labelOpacity})` },
         };
       };
 
-      const edgeReducer = (_edge: string, data: Record<string, unknown>) => {
+      const edgeReducer = (edge: string, data: Record<string, unknown>) => {
         const origColor = data.originalColor as string;
         const origSize = data.originalSize as number;
-        return { ...data, color: origColor, size: origSize, forceLabel: false };
+        const isConnected = connectedEdgesRef.current.has(edge);
+
+        if (hoveredNodeRef.current && isConnected) {
+          // Connected edge: highlight in hovered node's color with 2px stroke
+          return {
+            ...data,
+            color: hoveredNodeColorRef.current,
+            size: 2,
+          };
+        } else if (hoveredNodeRef.current && !isConnected) {
+          // Unconnected edge: fade to 20% opacity with 0.8px stroke
+          const color = origColor.replace(/[\d.]+\)$/g, '0.2)'); // Replace alpha
+          return {
+            ...data,
+            color,
+            size: 0.8,
+          };
+        }
+        return { ...data, color: origColor, size: origSize };
       };
 
       sigmaRef.current = new Sigma(graph, containerRef.current, {
@@ -249,9 +303,12 @@ const GraphView: React.FC<GraphViewProps> = ({
         enableEdgeEvents: true,
       });
 
-      // Node click
+      // Node click — trigger external handler and a visual pulse
       sigmaRef.current.on('clickNode', ({ node }) => {
         const nodeData = nodesDataRef.current.find(n => n.id === node);
+        // Start click pulse
+        clickedNodesRef.current.set(node, performance.now());
+        startClickLoop();
         if (nodeData && onNodeClick) onNodeClick(nodeData);
       });
 
@@ -260,42 +317,45 @@ const GraphView: React.FC<GraphViewProps> = ({
         lastHoveredNodeRef.current = node;
         hoveredNodeRef.current = node;
         containerRef.current!.style.cursor = 'pointer';
+
+        const nodeData = graph.getNodeAttributes(node);
+        hoveredNodeColorRef.current = nodeData.originalColor || '#FF5F1F';
+
+        // Compute connected nodes and edges
+        const connected = new Set<string>();
+        const connectedEdges = new Set<string>();
+        graph.forEachEdge((edge, _edgeAttrs, src, tgt) => {
+          if (src === node || tgt === node) {
+            connectedEdges.add(edge);
+            if (src === node) connected.add(tgt);
+            if (tgt === node) connected.add(src);
+          }
+        });
+        connectedNodesRef.current = connected;
+        connectedEdgesRef.current = connectedEdges;
+
         startHoverAnim();
 
-        const nodeData = nodesDataRef.current.find(n => n.id === node);
-        if (nodeData) {
+        const foundNode = nodesDataRef.current.find(n => n.id === node);
+        if (foundNode) {
           const rect = containerRef.current!.getBoundingClientRect();
           setTooltip({
-            node: nodeData,
+            node: foundNode,
             x: rect.left + rect.width / 2,
             y: rect.top + 60,
+            color: hoveredNodeColorRef.current,
           });
         }
-
-        // Highlight connected edges
-        graph.forEachEdge((edge, edgeAttrs) => {
-          const [src, tgt] = graph.extremities(edge);
-          const connected = src === node || tgt === node;
-          graph.setEdgeAttribute(edge, 'color',
-            connected ? '#FF5F1F' : `rgba(24,32,52,0.25)`);
-          graph.setEdgeAttribute(edge, 'size',
-            connected ? Math.max(2.5, edgeAttrs.size * 2) : edgeAttrs.size * 0.4);
-        });
       });
 
       // Hover — smooth leave
       sigmaRef.current.on('leaveNode', () => {
         hoveredNodeRef.current = null;
+        connectedNodesRef.current.clear();
+        connectedEdgesRef.current.clear();
         containerRef.current!.style.cursor = 'default';
         setTooltip(null);
-        // Don't call startHoverAnim — the RAF will smoothly transition out
-        // because hoveredNodeRef is now null, progress will decrease
         startHoverAnim();
-
-        graph.forEachEdge((edge) => {
-          graph.setEdgeAttribute(edge, 'color', graph.getEdgeAttribute(edge, 'originalColor'));
-          graph.setEdgeAttribute(edge, 'size', graph.getEdgeAttribute(edge, 'originalSize'));
-        });
       });
 
       sigmaRef.current.on('clickStage', () => {
@@ -310,6 +370,7 @@ const GraphView: React.FC<GraphViewProps> = ({
       if (sigmaRef.current) { sigmaRef.current.kill(); sigmaRef.current = null; }
       cancelAnimationFrame(animFrameRef.current);
       cancelAnimationFrame(hoverAnimFrameRef.current);
+      if (clickAnimFrameRef.current) cancelAnimationFrame(clickAnimFrameRef.current);
     };
   }, [nodes, edges, onNodeClick, startHoverAnim]);
 
@@ -418,23 +479,71 @@ const GraphView: React.FC<GraphViewProps> = ({
             left: tooltip.x,
             top: tooltip.y,
             transform: 'translate(-50%, 0)',
-          }}
+            '--accent-color': tooltip.color,
+          } as React.CSSProperties & { '--accent-color': string }}
         >
-          <div className="graph-tooltip-name">{tooltip.node.name}</div>
-          <div
-            className="graph-tooltip-type"
-            style={{
-              color: NODE_COLORS[tooltip.node.label] || '#AAAAAA',
-            }}
-          >
-            {tooltip.node.label}
-          </div>
-          {tooltip.node.severity !== undefined && (
-            <div className="graph-tooltip-row">
-              <span>SEVERITY</span>
-              <span>{tooltip.node.severity}/10</span>
+          <div className="graph-tooltip-scan-line"></div>
+
+          <div className="graph-tooltip-header">
+            <div className="graph-tooltip-name">{tooltip.node.name}</div>
+            <div
+              className="graph-tooltip-type-badge"
+              style={{ backgroundColor: `${tooltip.color}40` }}
+            >
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  backgroundColor: tooltip.color,
+                  display: 'inline-block',
+                  marginRight: '6px',
+                }}
+              ></span>
+              {tooltip.node.label}
             </div>
-          )}
+          </div>
+
+          <div className="graph-tooltip-body">
+            <div className="graph-tooltip-row">
+              <span className="graph-tooltip-label">SEVERITY</span>
+              <div className="graph-tooltip-bar-container">
+                <div
+                  className="graph-tooltip-progress-bar"
+                  style={{
+                    width: `${((tooltip.node.severity || 5) / 10) * 100}%`,
+                    backgroundColor: tooltip.color,
+                  }}
+                ></div>
+              </div>
+            </div>
+            <div className="graph-tooltip-row">
+              <span className="graph-tooltip-label">RISK CONTRIB</span>
+              <span className="graph-tooltip-value">—</span>
+            </div>
+            <div className="graph-tooltip-row">
+              <span className="graph-tooltip-label">CONNECTED</span>
+              <span className="graph-tooltip-value">{connectedNodesRef.current.size}</span>
+            </div>
+            <div className="graph-tooltip-row">
+              <span className="graph-tooltip-label">PATHS</span>
+              <span className="graph-tooltip-value">—</span>
+            </div>
+          </div>
+
+          <div className="graph-tooltip-footer">
+            <span
+              style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: tooltip.color,
+                display: 'inline-block',
+                marginRight: '8px',
+              }}
+            ></span>
+            <span className="graph-tooltip-location">Location · 2026</span>
+          </div>
         </div>
       )}
     </div>
