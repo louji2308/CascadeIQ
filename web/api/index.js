@@ -502,7 +502,7 @@ if (require.main === module) {
 
                     nodes.forEach((node, i) => {
                         const previousEdge = i === 0 ? null : edges[i - 1];
-                        const delay = i === 0 ? 0 : Number(previousEdge?.delay_hrs || 0) * 600;
+                        const delay = i === 0 ? 0 : Number(previousEdge ? .delay_hrs || 0) * 600;
                         accumulatedDelay += delay;
 
                         const timer = setTimeout(() => {
@@ -518,7 +518,7 @@ if (require.main === module) {
                                     },
                                     step: i,
                                     total: nodes.length,
-                                    mechanism: previousEdge?.mechanism || null
+                                    mechanism: previousEdge ? .mechanism || null
                                 }));
                             }
 
