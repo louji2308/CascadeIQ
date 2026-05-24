@@ -46,6 +46,16 @@ function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
 
+// Stable hash so same node always starts at same position
+function stableHash(str: string, range: number): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0; // convert to 32-bit int
+  }
+  return ((hash % range) + range) % range - range / 2;
+}
+
 const GraphView: React.FC<GraphViewProps> = ({
   nodes, edges, onNodeClick,
   highlightPath = [], simRunning = false, simStep = -1,
@@ -146,8 +156,8 @@ const GraphView: React.FC<GraphViewProps> = ({
         originalColor: NODE_COLORS[n.label] || '#AAAAAA',
         nodeLabel: n.label,
         severity: sev,
-        x: (Math.random() - 0.5) * 300,
-        y: (Math.random() - 0.5) * 300,
+        x: stableHash(n.id, 300),
+        y: stableHash(n.id + '_y', 300),
       });
     });
 
