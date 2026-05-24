@@ -107,15 +107,27 @@ app.get('/api/cascade/:hazardId', async(req, res) => {
     `;
 
         const paths = await runQuery(cypher, { hazardId: resolvedHazardId, minProb, removed });
-        const riskScore = paths.length > 0 ?
-            Math.min(100, Math.round(paths[0].probability_pct * (paths.length / 5))) :
-            0;
+        const topPath = paths[0];
+        const riskScore = topPath
+            ? Math.min(100, Math.round(topPath.probability_pct * (1 + topPath.depth * 0.12)))
+            : 0;
         const firstPath = paths[0] || { nodes: [], edges: [] };
+
+        const hazardInfo = await runQuery(`
+            MATCH (h:Hazard {id: $hazardId})
+            RETURN h.name AS name, toInteger(h.severity) AS severity, h.type AS type
+            LIMIT 1
+        `, { hazardId: resolvedHazardId });
+
+        const hazard = hazardInfo[0]
+            ? { name: hazardInfo[0].name, severity: hazardInfo[0].severity, type: hazardInfo[0].type }
+            : { name: resolvedHazardId, severity: 5, type: 'unknown' };
 
         res.json({
             success: true,
+            hazard,
             riskScore,
-            pathCount: paths.length, 
+            pathCount: paths.length,
             paths,
             nodes: firstPath.nodes,
             edges: firstPath.edges,

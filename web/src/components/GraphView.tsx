@@ -27,6 +27,7 @@ interface GraphViewProps {
   highlightPath?: string[];
   simRunning?: boolean;
   simStep?: number;
+  onReady?: (resetCamera: () => void) => void;
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -58,7 +59,7 @@ function stableHash(str: string, range: number): number {
 
 const GraphView: React.FC<GraphViewProps> = ({
   nodes, edges, onNodeClick,
-  highlightPath = [], simRunning = false, simStep = -1,
+  highlightPath = [], simRunning = false, simStep = -1, onReady,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const sigmaRef = useRef<Sigma | null>(null);
@@ -206,6 +207,7 @@ const GraphView: React.FC<GraphViewProps> = ({
         let borderSize = 0;
         let labelSize = 11;
         let labelOpacity = 0;
+        let labelColor = 'rgba(180,190,210,0)';
 
         // Apply hover state with original color preservation
         const isLeavingHover = !isHovered && lastHoveredNodeRef.current === node && progress > 0;
@@ -216,8 +218,9 @@ const GraphView: React.FC<GraphViewProps> = ({
           // Glow effect using layered border and color intensity
           borderColor = baseColor;
           borderSize = p * 3; // Glow radius
-          labelSize = 11 + p * 2;
+          labelSize = 11 * (1 + p * 0.5); // Smooth 1.5x scale at full progress
           labelOpacity = isHovered ? (0.6 + p * 0.4) : (0.6 - (1 - progress) * 0.5);
+          labelColor = `rgba(180,190,210,${labelOpacity})`;
         } else if (isConnected && !isHovered) {
           // Connected nodes stay at full opacity during hover of another node
           color = baseColor;
@@ -253,8 +256,9 @@ const GraphView: React.FC<GraphViewProps> = ({
             size = size + baseSize * (pulse * 0.9);
             borderSize = Math.max(borderSize, pulse * 6);
             borderColor = `rgba(255,95,31,${Math.min(0.95, pulse * 0.95)})`;
-            labelSize = Math.max(labelSize, 12 + pulse * 4);
+            labelSize = Math.max(labelSize, 11 * 1.5); // Set to 1.5x on click
             labelOpacity = 0.65 + pulse * 0.35;
+            labelColor = `rgba(180,190,210,${labelOpacity})`;
           }
         }
 
@@ -267,7 +271,7 @@ const GraphView: React.FC<GraphViewProps> = ({
           label: data.label as string,
           labelFont: "'Rajdhani', 'DM Sans', system-ui, sans-serif",
           labelSize,
-          labelColor: { color: `rgba(255,255,255,${labelOpacity})` },
+          labelColor: { color: labelColor },
         };
       };
 
@@ -476,6 +480,15 @@ const GraphView: React.FC<GraphViewProps> = ({
 
     sigma.refresh();
   }, [highlightPath, simRunning, simStep]);
+
+  // Expose reset camera function to parent
+  useEffect(() => {
+    if (onReady && sigmaRef.current) {
+      onReady(() => {
+        sigmaRef.current?.getCamera().animatedReset();
+      });
+    }
+  }, [onReady]);
 
   return (
     <div

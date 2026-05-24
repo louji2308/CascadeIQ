@@ -457,6 +457,8 @@ export default function App() {
   const [simRunning, setSimRunning] = useState(false);
   const [simStep, setSimStep] = useState(-1);
   const [simElapsed, setSimElapsed] = useState(0);
+  const [loadingStatus, setLoadingStatus] = useState('');
+  const [resetCameraFn, setResetCameraFn] = useState<(() => void) | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const simStartRef = useRef<number>(0);
   const simIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -475,6 +477,7 @@ export default function App() {
     setLoading(true);
     setError(null);
     setCascadeData(null);
+    setLoadingStatus('Connecting to Neo4j...');
 
     try {
       if (scenarioId === 'live_wildfires_satellite') {
@@ -484,7 +487,9 @@ export default function App() {
 
       const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`, { signal });
       if (signal.aborted) return;
-      
+
+      setLoadingStatus('Calculating cascade paths...');
+
       const records = scenRes.data.data;
       const hazardRec = records.find(r => r.node?.label === 'Hazard');
       if (!hazardRec?.node) throw new Error('No hazard node found');
@@ -495,6 +500,8 @@ export default function App() {
         signal,
       });
       if (signal.aborted) return;
+
+      setLoadingStatus('Building graph...');
 
       const paths: CascadePath[] = cascRes.data.paths || [];
       const nodeMap = new Map<string, CascadeNode>();
@@ -529,6 +536,7 @@ export default function App() {
       if (axios.isCancel(e)) return;
       setError(getErrorMessage(e));
     } finally {
+      setLoadingStatus('');
       setLoading(false);
     }
   }, []);
@@ -912,7 +920,7 @@ export default function App() {
                 <div className="loading-state">
                   <div className="loading-ring" />
                   <div className="loading-text">QUERYING NEO4J</div>
-                  <div className="loading-sub">TRAVERSING CASCADE GRAPH…</div>
+                  <div className="loading-sub">{loadingStatus || 'TRAVERSING CASCADE GRAPH…'}</div>
                 </div>
               ) : error ? (
                 <div className="error-state">
@@ -937,13 +945,25 @@ export default function App() {
                   highlightPath={simRunning && activePath ? activePath.nodes.slice(0, simStep + 1).map(n => n.id) : []}
                   simRunning={simRunning}
                   simStep={simStep}
+                  onReady={setResetCameraFn}
                 />
               )}
 
               {cascadeData && (
-                <div className="graph-coords">
-                  {cascadeData.nodes.length} NODES · {cascadeData.edges.length} EDGES · {cascadeData.paths.length} PATHS
-                </div>
+                <>
+                  <div className="graph-coords">
+                    {cascadeData.nodes.length} NODES · {cascadeData.edges.length} EDGES · {cascadeData.paths.length} PATHS
+                  </div>
+                  {resetCameraFn && (
+                    <button
+                      className="reset-view-btn"
+                      onClick={resetCameraFn}
+                      title="Reset camera to default view"
+                    >
+                      ↺ RESET VIEW
+                    </button>
+                  )}
+                </>
               )}
             </div>
 

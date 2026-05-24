@@ -660,6 +660,29 @@
     z-index: 2;
 }
 
+.reset-view-btn {
+    position: absolute;
+    bottom: 16px;
+    right: 16px;
+    padding: 6px 12px;
+    background: rgba(255, 95, 31, 0.08);
+    border: 1px solid rgba(255, 95, 31, 0.3);
+    color: rgba(255, 95, 31, 0.8);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: all 0.2s ease;
+    z-index: 3;
+}
+
+.reset-view-btn:hover {
+    background: rgba(255, 95, 31, 0.15);
+    border-color: rgba(255, 95, 31, 0.6);
+    color: rgba(255, 95, 31, 1);
+}
+
 .sigma-container {
     width: 100% !important;
     height: 100% !important;
