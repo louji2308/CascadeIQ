@@ -1,9 +1,6 @@
-const LOCAL_IP = '10.198.237.237';
+const PROD_URL = 'https://cascadeiq-production.up.railway.app';
 
-const DEV_URL = `http://${LOCAL_IP}:3001`;
-const PROD_URL = 'https://cascadeiq-nine.vercel.app/';
-
-export const API_BASE = __DEV__ ? DEV_URL : PROD_URL;
+export const API_BASE = PROD_URL;
 
 export const ENDPOINTS = {
   scenarios: `${API_BASE}/api/scenarios`,

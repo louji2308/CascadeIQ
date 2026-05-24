@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
 
 interface Props {
@@ -22,19 +22,19 @@ function getRiskLabel(score: number): string {
 
 export default function RiskBadge({ score, size = 90 }: Props) {
   const animatedScore = useRef(new Animated.Value(0)).current;
-  const displayScore = useRef(0);
+  const [displayNum, setDisplayNum] = useState(0);
   const color = getRiskColor(score);
 
   useEffect(() => {
+    animatedScore.addListener(({ value }) => {
+      setDisplayNum(Math.round(value));
+    });
+
     Animated.timing(animatedScore, {
       toValue: score,
       duration: 1500,
       useNativeDriver: false,
     }).start();
-
-    animatedScore.addListener(({ value }) => {
-      displayScore.current = Math.round(value);
-    });
 
     return () => animatedScore.removeAllListeners();
   }, [score]);
@@ -47,7 +47,7 @@ export default function RiskBadge({ score, size = 90 }: Props) {
       borderColor: color,
     }]}>
       <Text style={[styles.score, { color, fontSize: size * 0.32 }]}>
-        {score}
+        {displayNum}
       </Text>
       <Text style={[styles.label, { color, fontSize: size * 0.12 }]}>
         {getRiskLabel(score)}

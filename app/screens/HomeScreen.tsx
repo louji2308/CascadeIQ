@@ -28,11 +28,6 @@ const TYPE_COLORS: Record<string, string> = {
   flood: '#3D8EF0',
 };
 
-const TYPE_EMOJI: Record<string, string> = {
-  wildfire: '🔥',
-  earthquake: '🌍',
-  flood: '🌊',
-};
 
 function getScenarioType(id: string): string {
   if (id.includes('wildfire') || id.includes('lahaina')) return 'wildfire';
@@ -142,7 +137,6 @@ export default function HomeScreen({ navigation }: Props) {
         renderItem={({ item }) => {
           const type = getScenarioType(item.id);
           const color = TYPE_COLORS[type] || '#FF5F1F';
-          const emoji = TYPE_EMOJI[type] || '⚡';
 
           return (
             <TouchableOpacity
@@ -151,7 +145,9 @@ export default function HomeScreen({ navigation }: Props) {
               activeOpacity={0.75}
             >
               <View style={styles.cardTop}>
-                <Text style={styles.cardEmoji}>{emoji}</Text>
+                <View style={[styles.typeBadge, { backgroundColor: `${color}22`, borderColor: `${color}44` }]}>
+                  <Text style={[styles.typeText, { color }]}>{type.toUpperCase()}</Text>
+                </View>
                 <View style={styles.cardMeta}>
                   <Text style={[styles.cardYear, { color }]}>{item.year}</Text>
                   <Text style={styles.cardLocation}>{item.location}</Text>
@@ -219,8 +215,14 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.07)',
     borderLeftWidth: 3,
   },
-  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
-  cardEmoji: { fontSize: 28, marginRight: 12 },
+  cardTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
+  typeBadge: {
+    paddingHorizontal: 8, paddingVertical: 4,
+    borderRadius: 6, borderWidth: 1,
+    justifyContent: 'center', alignItems: 'center',
+    minWidth: 70,
+  },
+  typeText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   cardMeta: { flex: 1 },
   cardYear: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   cardLocation: { color: '#6b7280', fontSize: 11, marginTop: 2 },
