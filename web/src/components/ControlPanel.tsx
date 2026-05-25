@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './ControlPanel.css';
+import ImpactMeter from './ImpactMeter';
 
 interface CascadeNode {
   id: string;
@@ -14,6 +15,11 @@ interface ControlPanelProps {
   setRemovedNodes: (nodes: string[]) => void;
   availableNodes: CascadeNode[];
   riskScore?: number;
+  baselineRiskScore?: number;
+  deaths?: number;
+  scenarioName?: string;
+  scenarioLocation?: string;
+  cascadeAttributionFactor?: number;
 }
 
 const LABEL_META: Record<string, { icon: string; color: string; abbr: string }> = {
@@ -145,6 +151,11 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   setRemovedNodes,
   availableNodes,
   riskScore = 0,
+  baselineRiskScore = 0,
+  deaths = 0,
+  scenarioName = '',
+  scenarioLocation = '',
+  cascadeAttributionFactor = 0.35,
 }) => {
   const mitigable = availableNodes.filter(
     n => n.label === 'Resource' || n.label === 'Infrastructure'
@@ -215,6 +226,17 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
       {/* ── SYSTEM INTEGRITY MATRIX ── */}
       <SystemMatrix total={mitigable.length} removed={removedCount} />
+
+      {/* ── IMPACT METER ── */}
+      <ImpactMeter
+        baselineRiskScore={baselineRiskScore}
+        currentRiskScore={riskScore}
+        deaths={deaths}
+        cascadeAttributionFactor={cascadeAttributionFactor}
+        scenarioName={scenarioName}
+        scenarioLocation={scenarioLocation}
+        removedCount={removedCount}
+      />
 
       <div className="cp-risk-readout">
         <span>LIVE RISK INDEX</span>

@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import GraphView from './components/GraphView';
+import ControlPanel from './components/ControlPanel';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 const apiBaseLooksVercel = API_BASE.toLowerCase().includes('vercel.app');
+
+console.log('[App] API_BASE:', API_BASE);
+console.log('[App] VITE_API_URL:', import.meta.env.VITE_API_URL);
 
 function getWsBase(apiBase: string) {
   if (!apiBase) return '';
@@ -28,6 +32,7 @@ interface Scenario {
   deaths: number;
   damage_usd?: number;
   description?: string;
+  cascadeAttributionFactor?: number;
 }
 
 interface CascadeNode {
@@ -81,6 +86,58 @@ interface ScenarioNodeRecord {
 
 interface ScenarioNodeResponse {
   data: ScenarioNodeRecord[];
+}
+
+interface ValidationData {
+  validationSource: string;
+  documentedFailures: number;
+  predictedFailures: number;
+  matchedFailures: number;
+  accuracyPercent: number;
+  validationDate: string;
+  note: string;
+}
+
+interface TopRecommendation {
+  nodeId: string;
+  nodeName: string;
+  nodeLabel: string;
+  riskReduction: number;
+  eliminatedPaths: number;
+  riskScoreAfter: number;
+  recommendation: string;
+  livesSaved: number;
+  disclaimer: string;
+}
+
+interface RecommendOption {
+  nodeId: string;
+  nodeName: string;
+  nodeLabel: string;
+  riskScoreAfter: number;
+  riskReduction: number;
+  eliminatedPaths: number;
+  pathCountAfter: number;
+}
+
+interface CombinedTopTwo {
+  node1: { id: string; name: string; label: string };
+  node2: { id: string; name: string; label: string };
+  riskScoreAfter: number;
+  riskReduction: number;
+  eliminatedPaths: number;
+}
+
+interface RecommendationData {
+  scenarioId: string;
+  scenarioName: string;
+  deaths: number;
+  baselineRiskScore: number;
+  baselinePathCount: number;
+  topRecommendation: TopRecommendation | null;
+  allOptions: RecommendOption[];
+  combinedTopTwo: CombinedTopTwo | null;
+  error?: string;
 }
 
 interface CascadeResponse {
@@ -449,11 +506,15 @@ export default function App() {
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [cascadeData, setCascadeData] = useState<CascadeData | null>(null);
+  const [baselineRiskScore, setBaselineRiskScore] = useState(0);
   const [removedNodes, setRemovedNodes] = useState<string[]>([]);
+  const [validationData, setValidationData] = useState<ValidationData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<CascadeNode | null>(null);
   const [selectedPath, setSelectedPath] = useState<number>(0);
+  const [recommendation, setRecommendation] = useState<RecommendationData | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
   const [simRunning, setSimRunning] = useState(false);
   const [simStep, setSimStep] = useState(-1);
   const [simElapsed, setSimElapsed] = useState(0);
@@ -477,12 +538,28 @@ export default function App() {
     setLoading(true);
     setError(null);
     setCascadeData(null);
+    setRecommendation(null);
     setLoadingStatus('Connecting to Neo4j...');
 
     try {
       if (scenarioId === 'live_wildfires_satellite') {
         await axios.get(`${API_BASE}/api/realtime/wildfires`, { signal });
         if (signal.aborted) return;
+      } else {
+        try {
+          const valUrl = `${API_BASE}/api/scenarios/${scenarioId}/validation`;
+          console.log('[Validation] Fetching from:', valUrl);
+          const valRes = await axios.get(valUrl, { signal });
+          console.log('[Validation] Response:', valRes.data);
+          if (!signal.aborted && valRes.data.success && valRes.data.data) {
+            console.log('[Validation] Setting validation data:', valRes.data.data);
+            setValidationData(valRes.data.data);
+          } else {
+            console.log('[Validation] No data in response or request aborted');
+          }
+        } catch (e) {
+          console.error("[Validation] Fetch error:", e);
+        }
       }
 
       const scenRes = await axios.get<ScenarioNodeResponse>(`${API_BASE}/api/scenarios/${scenarioId}`, { signal });
@@ -525,12 +602,14 @@ export default function App() {
         });
       });
 
+      const newRiskScore = cascRes.data.riskScore || 0;
       setCascadeData({
         nodes: Array.from(nodeMap.values()),
         edges: Array.from(edgeMap.values()),
-        riskScore: cascRes.data.riskScore || 0,
+        riskScore: newRiskScore,
         paths,
       });
+      if (removed.length === 0) setBaselineRiskScore(newRiskScore);
       setSelectedPath(0);
     } catch (e: unknown) {
       if (axios.isCancel(e)) return;
@@ -573,6 +652,45 @@ export default function App() {
     if (selectedId) fetchCascade(selectedId, next);
   };
 
+  const handleControlPanelChange = useCallback((nodes: string[]) => {
+    setRemovedNodes(nodes);
+    if (selectedId) fetchCascade(selectedId, nodes);
+  }, [selectedId, fetchCascade]);
+
+  const handleOptimize = useCallback(async () => {
+    if (!cascadeData || optimizing) return;
+    const hazardNode = cascadeData.nodes.find(n => n.label === 'Hazard') || cascadeData.nodes[0];
+    if (!hazardNode) return;
+
+    setOptimizing(true);
+    setRecommendation(null);
+
+    try {
+      const url = `${API_BASE}/api/recommend-interventions/${hazardNode.id}`;
+      console.log('[Optimizer] Fetching:', url);
+      const res = await axios.get(url);
+      console.log('[Optimizer] Response:', res.data);
+      if (res.data?.success) {
+        setRecommendation(res.data);
+      }
+    } catch (e) {
+      console.error('[Optimizer] Error:', e);
+      setRecommendation({
+        baselineRiskScore: 0,
+        baselinePathCount: 0,
+        allOptions: [],
+        topRecommendation: null,
+        combinedTopTwo: null,
+        deaths: 0,
+        scenarioId: '',
+        scenarioName: '',
+        error: e instanceof Error ? e.message : 'Optimization failed',
+      } as RecommendationData);
+    } finally {
+      setOptimizing(false);
+    }
+  }, [cascadeData, optimizing]);
+
   const handleScenarioSelect = (scenarioId: string) => {
     setSelectedId(scenarioId);
     setRemovedNodes([]);
@@ -585,6 +703,8 @@ export default function App() {
     setSimRunning(false);
     setSimElapsed(0);
     setCascadeData(null);
+    setValidationData(null);
+    setRecommendation(null);
     if (scenarioId) fetchCascade(scenarioId, []);
   };
 
@@ -822,6 +942,17 @@ export default function App() {
                     <AnimatedStat label="Casualties" value={selectedScenario.deaths} />
                     <AnimatedStat label="Year" value={selectedScenario.year} color="var(--cyan)" />
                   </div>
+                  {validationData && typeof validationData.accuracyPercent === 'number' && (
+                    <div style={{ display: 'flex', justifyContent: 'center' }}>
+                      <div className={`validation-badge ${validationData.accuracyPercent > 80 ? 'high' : validationData.accuracyPercent >= 60 ? 'medium' : 'low'}`}>
+                        <span className="validation-pct">{validationData.accuracyPercent}%</span>
+                        <span className="validation-src">{validationData.validationSource}</span>
+                        <div className="validation-tooltip">
+                          Of the {validationData.predictedFailures} cascade events our model predicted, {validationData.matchedFailures} were independently documented in official post-incident reports.
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -847,38 +978,109 @@ export default function App() {
             </div>
 
             <div className="panel-block grow">
-              <div className="panel-label">MITIGATION CONTROLS</div>
-              {mitigable.length === 0 ? (
-                <div style={{ color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', fontSize: 10, letterSpacing: 1 }}>
-                  SELECT SCENARIO TO CONFIGURE
-                </div>
-              ) : (
-                <div className="control-list">
-                  {mitigable.map(node => {
-                    const removed = removedNodes.includes(node.id);
-                    return (
-                      <label key={node.id} className={`control-item ${removed ? 'checked' : ''}`}>
-                        <input type="checkbox" className="control-checkbox"
-                          checked={removed} onChange={() => toggleNode(node.id)} />
-                        <div className="control-item-info">
-                          <div className="control-item-name">{node.name}</div>
-                          <div className="control-item-type">{node.label}</div>
-                        </div>
-                        {removed && <span className="impact-badge">REMOVED</span>}
-                      </label>
-                    );
-                  })}
-                  {removedNodes.length > 0 && (
-                    <div style={{
-                      padding: '8px', background: 'rgba(255,61,61,0.06)',
-                      border: '1px solid rgba(255,61,61,0.2)', borderRadius: 3,
-                      fontFamily: 'var(--font-mono)', fontSize: 9, color: 'var(--red)', letterSpacing: 1
-                    }}>
-                      ⚠ {removedNodes.length} SYSTEM{removedNodes.length > 1 ? 'S' : ''} OFFLINE — RISK RECALCULATED
+              <div className="panel-label" style={{ justifyContent: 'space-between' }}>
+                <span>MITIGATION CONTROLS</span>
+                {cascadeData && mitigable.length > 0 && (
+                  <button
+                    className="optimize-btn"
+                    onClick={handleOptimize}
+                    disabled={optimizing}
+                  >
+                    {optimizing ? 'CALCULATING...' : 'OPTIMIZE'}
+                  </button>
+                )}
+              </div>
+
+              {recommendation && !recommendation.error && recommendation.topRecommendation && (
+                <div className="recommendation-card">
+                  <div className="rec-header">OPTIMAL INTERVENTION</div>
+                  <div className="rec-node-name">{recommendation.topRecommendation.nodeName}</div>
+                  <div className="rec-metrics">
+                    <div className="rec-metric">
+                      <span className="rec-metric-val" style={{ color: '#00E676' }}>↓{recommendation.topRecommendation.riskReduction}</span>
+                      <span className="rec-metric-lbl">RISK REDUCTION</span>
+                    </div>
+                    <div className="rec-metric">
+                      <span className="rec-metric-val" style={{ color: '#00CFFF' }}>{recommendation.topRecommendation.eliminatedPaths}</span>
+                      <span className="rec-metric-lbl">CHAINS ELIMINATED</span>
+                    </div>
+                    <div className="rec-metric">
+                      <span className="rec-metric-val" style={{ color: '#A78BFA' }}>~{recommendation.topRecommendation.livesSaved}</span>
+                      <span className="rec-metric-lbl">LIVES SAVED</span>
+                    </div>
+                  </div>
+                  <div className="rec-text">{recommendation.topRecommendation.recommendation}</div>
+                  <div className="rec-lives-note">
+                    Intervention could prevent approximately {recommendation.topRecommendation.livesSaved} deaths in a similar future event.
+                    <span className="rec-disclaimer"> {recommendation.topRecommendation.disclaimer}</span>
+                  </div>
+                  {recommendation.combinedTopTwo && (
+                    <div className="rec-top-two">
+                      Combined with {recommendation.combinedTopTwo.node2.name}: ↓{recommendation.combinedTopTwo.riskReduction} risk, {recommendation.combinedTopTwo.eliminatedPaths} chains eliminated.
                     </div>
                   )}
+                  <button
+                    className="rec-apply-btn"
+                    onClick={() => {
+                      if (recommendation.topRecommendation) {
+                        const nodeId = recommendation.topRecommendation.nodeId;
+                        if (!removedNodes.includes(nodeId)) {
+                          toggleNode(nodeId);
+                        }
+                      }
+                    }}
+                  >
+                    APPLY THIS RECOMMENDATION
+                  </button>
                 </div>
               )}
+              {recommendation && !recommendation.topRecommendation && !recommendation.error && (
+                <div className="recommendation-card" style={{ borderColor: 'rgba(255,152,0,0.25)', background: 'rgba(255,152,0,0.04)' }}>
+                  <div className="rec-header" style={{ color: '#FF9800' }}>INTERVENTION ANALYSIS</div>
+                  <div className="rec-text">
+                    No single-node intervention produces meaningful risk reduction in this scenario. The cascade risk is distributed across multiple parallel branches — protecting any one node does not eliminate the top failure path.
+                  </div>
+                  {recommendation.allOptions && recommendation.allOptions.length > 0 && (
+                    <div className="rec-top-two">
+                      Best option: {recommendation.allOptions[0].nodeName} (↓{recommendation.allOptions[0].riskReduction} risk, {recommendation.allOptions[0].eliminatedPaths} chains eliminated)
+                    </div>
+                  )}
+                  {recommendation.combinedTopTwo && (
+                    <div className="rec-top-two">
+                      Combined: protect {recommendation.combinedTopTwo.node1.name} + {recommendation.combinedTopTwo.node2.name} → ↓{recommendation.combinedTopTwo.riskReduction} risk, {recommendation.combinedTopTwo.eliminatedPaths} chains eliminated.
+                    </div>
+                  )}
+                  <button
+                    className="rec-apply-btn"
+                    style={{ borderColor: 'rgba(255,152,0,0.3)', color: '#FF9800', background: 'rgba(255,152,0,0.08)' }}
+                    onClick={() => {
+                      if (recommendation.allOptions && recommendation.allOptions.length > 0 && !removedNodes.includes(recommendation.allOptions[0].nodeId)) {
+                        toggleNode(recommendation.allOptions[0].nodeId);
+                      }
+                    }}
+                  >
+                    PROTECT BEST AVAILABLE
+                  </button>
+                </div>
+              )}
+              {recommendation && recommendation.error && (
+                <div className="recommendation-card" style={{ borderColor: 'rgba(255,61,61,0.25)', background: 'rgba(255,61,61,0.04)' }}>
+                  <div className="rec-header" style={{ color: '#FF3D3D' }}>OPTIMIZATION ERROR</div>
+                  <div className="rec-text">{recommendation.error}</div>
+                </div>
+              )}
+
+              <ControlPanel
+                removedNodes={removedNodes}
+                setRemovedNodes={handleControlPanelChange}
+                availableNodes={cascadeData?.nodes || []}
+                riskScore={cascadeData?.riskScore}
+                baselineRiskScore={baselineRiskScore}
+                deaths={selectedScenario?.deaths}
+                scenarioName={selectedScenario?.name}
+                scenarioLocation={selectedScenario?.location}
+                cascadeAttributionFactor={selectedScenario?.cascadeAttributionFactor}
+              />
             </div>
           </div>
 
@@ -1011,6 +1213,35 @@ export default function App() {
               <div className="panel-label">CASCADE RISK INDEX</div>
               <RiskGauge score={cascadeData?.riskScore || 0} />
             </div>
+
+            {validationData && typeof validationData.accuracyPercent === 'number' && (
+              <div className="panel-block">
+                <div className="panel-label">HISTORICAL VALIDATION</div>
+                <div className="validation-panel">
+                  <div className="node-detail-row">
+                    <span className="key">DOCUMENTED FAILURES</span>
+                    <span className="val">{validationData.documentedFailures}</span>
+                  </div>
+                  <div className="node-detail-row">
+                    <span className="key">PREDICTED BY MODEL</span>
+                    <span className="val">{validationData.predictedFailures}</span>
+                  </div>
+                  <div className="node-detail-row">
+                    <span className="key">MATCHED FAILURES</span>
+                    <span className="val">{validationData.matchedFailures}</span>
+                  </div>
+                  <div className="node-detail-row">
+                    <span className="key">VALIDATION DATE</span>
+                    <span className="val">{validationData.validationDate}</span>
+                  </div>
+                  {validationData.note && (
+                    <div className="validation-note">
+                      {validationData.note}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {selectedNode && (
               <div className="panel-block">

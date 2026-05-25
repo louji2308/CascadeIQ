@@ -619,6 +619,166 @@
     }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   IMPACT METER — LIVES SAVED CALCULATOR
+   ═══════════════════════════════════════════════════════════ */
+
+.impact-meter {
+    position: relative;
+    z-index: 2;
+    margin: 8px 14px 0;
+    padding: 12px;
+    border-radius: 5px;
+    font-family: var(--font-mono, 'Share Tech Mono', monospace);
+    transition: all 0.3s ease;
+    animation: im-appear 0.35s ease both;
+}
+
+@keyframes im-appear {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.impact-meter--neutral {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(0, 207, 255, 0.025);
+    border: 1px dashed rgba(0, 207, 255, 0.12);
+}
+
+.impact-meter--positive {
+    background: linear-gradient(135deg, rgba(0, 230, 118, 0.08), rgba(0, 230, 118, 0.02));
+    border: 1px solid rgba(0, 230, 118, 0.25);
+    box-shadow: 0 0 20px rgba(0, 230, 118, 0.05), inset 0 0 20px rgba(0, 230, 118, 0.02);
+}
+
+.impact-meter--negative {
+    background: linear-gradient(135deg, rgba(255, 61, 61, 0.08), rgba(255, 61, 61, 0.02));
+    border: 1px solid rgba(255, 61, 61, 0.25);
+    box-shadow: 0 0 20px rgba(255, 61, 61, 0.05), inset 0 0 20px rgba(255, 61, 61, 0.02);
+}
+
+.impact-meter-icon {
+    flex-shrink: 0;
+    color: rgba(0, 207, 255, 0.35);
+    display: flex;
+}
+
+.impact-meter-neutral-text {
+    font-size: 8.5px;
+    letter-spacing: 1.2px;
+    color: rgba(123, 143, 171, 0.5);
+    text-transform: uppercase;
+}
+
+.impact-meter-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.impact-meter-label {
+    font-size: 9px;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+}
+
+.impact-meter--positive .impact-meter-label {
+    color: rgba(0, 230, 118, 0.8);
+}
+
+.impact-meter--negative .impact-meter-label {
+    color: rgba(255, 61, 61, 0.8);
+}
+
+.impact-meter-info-icon {
+    font-size: 11px;
+    cursor: pointer;
+    opacity: 0.4;
+    transition: opacity 0.15s ease;
+    color: rgba(123, 143, 171, 0.6);
+}
+
+.impact-meter-info-icon:hover {
+    opacity: 0.8;
+}
+
+.impact-meter-value-wrap {
+    text-align: center;
+    margin-bottom: 2px;
+}
+
+.impact-meter-value {
+    font-size: 32px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: 1px;
+    font-variant-numeric: tabular-nums;
+}
+
+.impact-meter-value--green {
+    color: #00E676;
+    text-shadow: 0 0 30px rgba(0, 230, 118, 0.2);
+}
+
+.impact-meter-value--red {
+    color: #FF3D3D;
+    text-shadow: 0 0 30px rgba(255, 61, 61, 0.2);
+}
+
+.impact-meter-subtext {
+    display: block;
+    text-align: center;
+    font-size: 8.5px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+.impact-meter--positive .impact-meter-subtext {
+    color: rgba(0, 230, 118, 0.4);
+}
+
+.impact-meter--negative .impact-meter-subtext {
+    color: rgba(255, 61, 61, 0.5);
+}
+
+.impact-meter-disclaimer {
+    margin-top: 8px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+    font-size: 8px;
+    letter-spacing: 0.3px;
+    color: rgba(123, 143, 171, 0.4);
+    line-height: 1.5;
+    text-align: center;
+}
+
+.impact-meter-tooltip {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 8px;
+    right: 8px;
+    z-index: 100;
+    padding: 10px 12px;
+    background: rgba(10, 16, 28, 0.98);
+    border: 1px solid rgba(255, 95, 31, 0.25);
+    border-radius: 4px;
+    font-size: 9px;
+    line-height: 1.6;
+    color: rgba(180, 195, 215, 0.85);
+    letter-spacing: 0.3px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    animation: im-tooltip-in 0.2s ease both;
+}
+
+@keyframes im-tooltip-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
 .cp-risk-readout {
     position: relative;
     z-index: 2;
