@@ -1,0 +1,90 @@
+.wind-compass {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 0 4px;
+    animation: fade-in-up 0.4s ease;
+    min-width: 0;
+}
+
+.wind-compass-svg {
+    width: 100%;
+    max-width: 180px;
+    height: auto;
+    aspect-ratio: 1;
+    overflow: visible;
+}
+
+.compass-cardinal {
+    fill: rgba(180, 195, 220, 0.5);
+    font-family: 'Share Tech Mono', monospace;
+    letter-spacing: 0.5px;
+}
+
+.compass-north {
+    fill: #FF5F1F;
+    font-weight: 700;
+}
+
+.compass-fire-label {
+    fill: rgba(255, 95, 31, 0.5);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 2px;
+}
+
+.compass-dot-group {
+    cursor: help;
+    transition: opacity 0.2s;
+}
+
+.compass-dot-group:hover {
+    opacity: 1 !important;
+}
+
+.compass-dot-label {
+    fill: rgba(180, 195, 220, 0.4);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 7px;
+    letter-spacing: 0.5px;
+}
+
+.compass-data {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    margin-top: 2px;
+}
+
+.compass-wind-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+}
+
+.compass-wind-label {
+    color: rgba(180, 195, 220, 0.5);
+    letter-spacing: 2px;
+    font-size: 8px;
+}
+
+.compass-wind-value {
+    color: #FF5F1F;
+    font-weight: 700;
+}
+
+.compass-wind-dir {
+    color: rgba(180, 195, 220, 0.6);
+    font-size: 9px;
+}
+
+.compass-infra-count {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    color: rgba(0, 207, 255, 0.4);
+    letter-spacing: 1px;
+    margin-top: 2px;
+}

@@ -8,6 +8,7 @@ const express = require('express');
 const cors = require('cors');
 const WebSocket = require('ws');
 const { runQuery } = require('./neo4j.cjs');
+const { synthesiseCascadeForFire, fetchWind, fetchPlaceName } = require('./cascade-synthesizer');
 
 const VALIDATION_SEEDS = [
     {
@@ -637,7 +638,43 @@ async function seedFiresBestEffort(fires, now) {
     }
 }
 
+async function enrichFireWithPlaceNameAsync(fire) {
+    try {
+        const placeName = await fetchPlaceName(fire.lat, fire.lon);
+        if (placeName) {
+            const displayName = `Live Fire · ${placeName}`;
+            await runQuery(`
+                MATCH (h:Hazard {id: $nodeId})
+                SET h.place_name = $placeName,
+                    h.name = $displayName,
+                    h.region = $placeName
+            `, { nodeId: fire.id, placeName, displayName });
+            console.log(`[FIRMS] Enriched ${fire.id} → ${placeName}`);
+        }
+    } catch (err) {
+        console.warn(`[FIRMS] Place name enrichment skipped for ${fire.id}: ${err.message}`);
+    }
+}
+
+async function cleanSynthesisedData() {
+    try {
+        await runQuery(`
+            MATCH (sc:Scenario {id: 'live_wildfires_satellite'})-[:CONTAINS]->(n {synthesised: true})
+            DETACH DELETE n
+        `);
+        await runQuery(`
+            MATCH (h:Hazard {live: true})
+            REMOVE h.wind_speed_kmh, h.wind_direction_deg, h.spread_radius_km,
+                   h.cascade_synthesised, h.synthesis_timestamp, h.place_name
+        `);
+        console.log('[FIRMS] Cleaned up previous synthesised cascade data');
+    } catch (err) {
+        console.warn('[FIRMS] Cleanup warning:', err.message);
+    }
+}
+
 async function sendFireResponse(res, fires, asOf, options = {}) {
+    await cleanSynthesisedData();
     const formatted = fires.map(formatFire);
     await seedFiresBestEffort(formatted, asOf);
 
@@ -654,7 +691,14 @@ async function sendFireResponse(res, fires, asOf, options = {}) {
         payload.message = options.message;
     }
 
-    return res.json(payload);
+    res.json(payload);
+
+    // Fire-and-forget: enrich each fire with a real place name from Nominatim.
+    // The rate limiter (1.1s between calls) in fetchPlaceName serializes them.
+    // Next load of this endpoint will show real place names in the dropdown.
+    for (const f of formatted) {
+        enrichFireWithPlaceNameAsync(f);
+    }
 }
 
 function sendFallbackFireResponse(res, message) {
@@ -743,6 +787,61 @@ app.get('/api/realtime/wildfires', async(req, res) => {
     }
 });
 
+// ── LIVE CASCADE SYNTHESIS ENDPOINT ─────────────────────────────────────────
+// Synthesizes a full cascade graph for any live wildfire using real-time wind
+// (Open-Meteo) and real infrastructure (OpenStreetMap/Overpass).
+app.get('/api/realtime/wildfires/cascade/:fireId', async (req, res) => {
+    const { fireId } = req.params;
+    console.log(`[Synthesis] Request for fireId: ${fireId}`);
+
+    try {
+        // Load the fire from Neo4j
+        console.log('[Synthesis] Loading fire from Neo4j...');
+        const fireRecords = await runQuery(`
+            MATCH (h:Hazard {id: $fireId})
+            RETURN h.id AS id, h.name AS name, h.lat AS lat, h.lon AS lon,
+                   h.frp_mw AS frp_mw, h.region AS region, h.acq_date AS acq_date
+            LIMIT 1
+        `, { fireId });
+
+        if (!fireRecords.length) {
+            console.error(`[Synthesis] Fire ${fireId} not found in Neo4j`);
+            return res.status(404).json({ success: false, error: `Fire ${fireId} not found in Neo4j` });
+        }
+
+        const fire = fireRecords[0];
+        console.log(`[Synthesis] Fire loaded: ${fire.name} @ ${fire.lat},${fire.lon} FRP: ${fire.frp_mw}MW`);
+
+        const result = await synthesiseCascadeForFire(fire, runQuery);
+        console.log(`[Synthesis] Complete: ${result.nodesSeeded} nodes, ${result.edgesSeeded} edges, riskScore: ${result.riskScore}`);
+        res.json(result);
+
+    } catch (err) {
+        console.error('[Synthesis] ERROR:', err.message);
+        console.error('[Synthesis] Stack:', err.stack);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ── WIND DATA ENDPOINT ─────────────────────────────────────────────────────
+// Returns live wind data for any lat/lon from Open-Meteo (free, no key).
+app.get('/api/realtime/wildfires/wind/:lat/:lon', async (req, res) => {
+    try {
+        const lat = parseFloat(req.params.lat);
+        const lon = parseFloat(req.params.lon);
+
+        if (isNaN(lat) || isNaN(lon)) {
+            return res.status(400).json({ success: false, error: 'Invalid lat/lon' });
+        }
+
+        const wind = await fetchWind(lat, lon);
+        res.json({ success: true, lat, lon, wind });
+    } catch (err) {
+        console.error('[Wind]', err.message);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Export for Vercel (critical)
 module.exports = app;
 
@@ -775,6 +874,9 @@ if (require.main === module) {
                 console.log(`  GET /api/recommend-interventions/:hazardId`);
                 console.log(`  GET /api/analytics/criticality`);
                 console.log(`  WS  /ws/simulation`);
+                console.log(`  GET /api/realtime/wildfires`);
+                console.log(`  GET /api/realtime/wildfires/cascade/:fireId`);
+                console.log(`  GET /api/realtime/wildfires/wind/:lat/:lon`);
 
                 seedValidationIfMissing().then(seeded => {
                     console.log(`[Boot] Validation seeding complete`);

@@ -133,7 +133,7 @@
     font-family: var(--font-mono, 'Share Tech Mono', monospace);
     font-size: 10px;
     letter-spacing: 2.5px;
-    color: rgba(255, 95, 31, 0.75);
+    color: rgba(140, 150, 170, 0.85);
     text-transform: uppercase;
     font-weight: 400;
 }

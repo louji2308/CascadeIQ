@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 import GraphView from './components/GraphView';
 import ControlPanel from './components/ControlPanel';
+import WindCompass from './components/WindCompass';
 import './App.css';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -143,6 +144,32 @@ interface RecommendationData {
 interface CascadeResponse {
   paths?: CascadePath[];
   riskScore?: number;
+}
+
+interface CompassDataPoint {
+  name: string;
+  bearing: number;
+  distanceKm: number;
+  prob: number;
+  category: string;
+  label: string;
+}
+
+interface SynthesisResult {
+  success: boolean;
+  fireId: string;
+  fireName: string;
+  placeName?: string;
+  wind: { speedKmh: number; directionDeg: number };
+  spreadRadiusKm: number;
+  infrastructureFound: number;
+  nodesSeeded: number;
+  edgesSeeded: number;
+  riskScore: number;
+  nodes: CascadeNode[];
+  edges: CascadeEdge[];
+  paths: CascadePath[];
+  compassData: CompassDataPoint[];
 }
 
 const NODE_COLORS: Record<string, string> = {
@@ -520,6 +547,10 @@ export default function App() {
   const [simElapsed, setSimElapsed] = useState(0);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [resetCameraFn, setResetCameraFn] = useState<(() => void) | null>(null);
+  const [synthesizing, setSynthesizing] = useState(false);
+  const [synthesisStatus, setSynthesisStatus] = useState('');
+  const [synthesisResult, setSynthesisResult] = useState<SynthesisResult | null>(null);
+  const [selectedFireId, setSelectedFireId] = useState<string | null>(null);
   const simTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const simStartRef = useRef<number>(0);
   const simIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -644,18 +675,62 @@ export default function App() {
     };
   }, []);
 
+  const filterCascadeLocally = useCallback((removed: string[], syn: SynthesisResult): CascadeData => {
+    if (!syn || !syn.paths) {
+      return { nodes: syn?.nodes || [], edges: syn?.edges || [], riskScore: syn?.riskScore || 0, paths: [] };
+    }
+
+    const removedSet = new Set(removed);
+    const filteredPaths = syn.paths.filter(p => {
+      const firstNode = p.nodes[0];
+      if (firstNode && removedSet.has(firstNode.id)) return false;
+      return p.nodes.every(n => !removedSet.has(n.id));
+    });
+
+    const usedNodeIds = new Set<string>();
+    const usedEdgeKeys = new Set<string>();
+    filteredPaths.forEach(p => {
+      p.nodes.forEach(n => usedNodeIds.add(n.id));
+      p.edges.forEach(e => usedEdgeKeys.add(`${e.from}->${e.to}`));
+    });
+
+    const nodes = syn.nodes.filter(n => usedNodeIds.has(n.id));
+    const edges = syn.edges.filter(e => usedEdgeKeys.has(`${e.from}->${e.to}`));
+
+    let riskScore = 0;
+    if (filteredPaths.length > 0) {
+      const maxProb = Math.max(...filteredPaths.map(p => p.probability_pct));
+      const ratio = filteredPaths.length / syn.paths.length;
+      riskScore = Math.min(99, Math.round((syn.riskScore || 0) * ratio * (0.6 + 0.4 * (maxProb / 100))));
+    }
+
+    return { nodes, edges, riskScore, paths: filteredPaths };
+  }, []);
+
   const toggleNode = (nodeId: string) => {
     const next = removedNodes.includes(nodeId)
       ? removedNodes.filter(id => id !== nodeId)
       : [...removedNodes, nodeId];
     setRemovedNodes(next);
-    if (selectedId) fetchCascade(selectedId, next);
+    setRecommendation(null);
+    if (synthesisResult) {
+      setCascadeData(filterCascadeLocally(next, synthesisResult));
+      if (next.length === 0) setBaselineRiskScore(synthesisResult.riskScore);
+    } else if (selectedId) {
+      fetchCascade(selectedId, next);
+    }
   };
 
   const handleControlPanelChange = useCallback((nodes: string[]) => {
     setRemovedNodes(nodes);
-    if (selectedId) fetchCascade(selectedId, nodes);
-  }, [selectedId, fetchCascade]);
+    setRecommendation(null);
+    if (synthesisResult) {
+      setCascadeData(filterCascadeLocally(nodes, synthesisResult));
+      if (nodes.length === 0) setBaselineRiskScore(synthesisResult.riskScore);
+    } else if (selectedId) {
+      fetchCascade(selectedId, nodes);
+    }
+  }, [selectedId, fetchCascade, synthesisResult, filterCascadeLocally]);
 
   const handleOptimize = useCallback(async () => {
     if (!cascadeData || optimizing) return;
@@ -691,11 +766,95 @@ export default function App() {
     }
   }, [cascadeData, optimizing]);
 
+  const handleSynthesize = async (fireId: string) => {
+    setSynthesizing(true);
+    setSynthesisStatus('DETECTING WIND DIRECTION...');
+    setError(null);
+    setRemovedNodes([]);
+    setRecommendation(null);
+
+    try {
+      await new Promise(r => setTimeout(r, 600));
+      setSynthesisStatus('QUERYING OPENSTREETMAP INFRASTRUCTURE...');
+      await new Promise(r => setTimeout(r, 400));
+
+      console.log(`[Synthesize] Calling API: ${API_BASE}/api/realtime/wildfires/cascade/${fireId}`);
+      const startTime = performance.now();
+
+      const res = await axios.get(
+        `${API_BASE}/api/realtime/wildfires/cascade/${fireId}`,
+        { timeout: 45000 }
+      );
+
+      const elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+      console.log(`[Synthesize] API responded in ${elapsed}s`, res.data);
+
+      if (!res.data.success) throw new Error(res.data.error || 'Synthesis failed');
+      if (!res.data.nodes || res.data.nodes.length === 0) throw new Error('Synthesis returned zero nodes');
+      if (!res.data.paths) res.data.paths = [];
+
+      console.log(`[Synthesize] Got ${res.data.nodes.length} nodes, ${(res.data.edges || []).length} edges, ${res.data.infrastructureFound} OSM results`);
+
+      setSynthesisStatus('BUILDING CASCADE GRAPH...');
+      await new Promise(r => setTimeout(r, 500));
+
+      const syn = res.data as SynthesisResult;
+      setSynthesisResult(syn);
+      setCascadeData({
+        nodes: syn.nodes,
+        edges: syn.edges || [],
+        riskScore: syn.riskScore || 0,
+        paths: syn.paths,
+      });
+      setBaselineRiskScore(syn.riskScore || 0);
+      setSelectedPath(0);
+      if (syn.placeName) {
+        setSelectedNode(prev => prev && prev.id === selectedFireId
+          ? { ...prev, name: `Live Fire · ${syn.placeName}` }
+          : prev);
+      }
+    } catch (e: unknown) {
+      console.error('[Synthesize] Error:', e);
+      setError(getErrorMessage(e));
+    } finally {
+      setSynthesizing(false);
+      setSynthesisStatus('');
+    }
+  };
+
+  const handleBackFromSynthesis = useCallback(() => {
+    setSynthesisResult(null);
+    setCascadeData(null);
+    setRecommendation(null);
+    setRemovedNodes([]);
+    setSelectedPath(0);
+    setSimRunning(false);
+    setSimStep(-1);
+    setSimElapsed(0);
+    if (simIntervalRef.current) clearInterval(simIntervalRef.current);
+    simTimersRef.current.forEach(clearTimeout);
+    simTimersRef.current = [];
+    if (selectedId) fetchCascade(selectedId, []);
+  }, [selectedId, fetchCascade]);
+
+  const handleNodeClick = useCallback((node: CascadeNode) => {
+    setSelectedNode(node);
+    if (selectedId === 'live_wildfires_satellite' && node.label === 'Hazard') {
+      setSelectedFireId(node.id);
+    } else {
+      setSelectedFireId(null);
+    }
+  }, [selectedId]);
+
   const handleScenarioSelect = (scenarioId: string) => {
     setSelectedId(scenarioId);
     setRemovedNodes([]);
     setSelectedNode(null);
+    setSelectedFireId(null);
+    setSynthesisResult(null);
     // Clear any running simulation
+    wsRef.current?.close();
+    wsRef.current = null;
     simTimersRef.current.forEach(clearTimeout);
     simTimersRef.current = [];
     if (simIntervalRef.current) clearInterval(simIntervalRef.current);
@@ -746,6 +905,7 @@ export default function App() {
         const doneTimer = setTimeout(() => {
           if (simIntervalRef.current) clearInterval(simIntervalRef.current);
           setSimRunning(false);
+          setSimStep(-1);
         }, 800);
         simTimersRef.current.push(doneTimer);
         return;
@@ -770,6 +930,7 @@ export default function App() {
           const doneTimer = setTimeout(() => {
             if (simIntervalRef.current) clearInterval(simIntervalRef.current);
             setSimRunning(false);
+            setSimStep(-1);
           }, 1200);
           simTimersRef.current.push(doneTimer);
         }
@@ -801,6 +962,11 @@ export default function App() {
       simStartRef.current = performance.now ? performance.now() : Date.now();
     }, 0);
 
+    simIntervalRef.current = setInterval(() => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      setSimElapsed(Math.floor((now - simStartRef.current) / 1000));
+    }, 200);
+
     simTimersRef.current.forEach(clearTimeout);
     simTimersRef.current = [];
 
@@ -825,6 +991,7 @@ export default function App() {
         case 'SIMULATE_COMPLETE':
           if (simIntervalRef.current) clearInterval(simIntervalRef.current);
           setSimRunning(false);
+          setSimStep(-1);
           socket.close();
           if (wsRef.current === socket) {
             wsRef.current = null;
@@ -834,6 +1001,7 @@ export default function App() {
           console.error(data.error || data.message);
           if (simIntervalRef.current) clearInterval(simIntervalRef.current);
           setSimRunning(false);
+          setSimStep(-1);
           break;
       }
     };
@@ -841,10 +1009,12 @@ export default function App() {
     socket.onerror = () => {
       if (simIntervalRef.current) clearInterval(simIntervalRef.current);
       setSimRunning(false);
+      setSimStep(-1);
     };
 
     socket.onclose = () => {
       setSimRunning(false);
+      setSimStep(-1);
       if (simIntervalRef.current) clearInterval(simIntervalRef.current);
       if (wsRef.current === socket) {
         wsRef.current = null;
@@ -1073,7 +1243,7 @@ export default function App() {
               <ControlPanel
                 removedNodes={removedNodes}
                 setRemovedNodes={handleControlPanelChange}
-                availableNodes={cascadeData?.nodes || []}
+                availableNodes={synthesisResult?.nodes || cascadeData?.nodes || []}
                 riskScore={cascadeData?.riskScore}
                 baselineRiskScore={baselineRiskScore}
                 deaths={selectedScenario?.deaths}
@@ -1118,7 +1288,27 @@ export default function App() {
               <div className="graph-corner bl" />
               <div className="graph-corner br" />
 
-              {loading ? (
+              {synthesizing ? (
+                <div className="loading-state">
+                  <div className="loading-ring" />
+                  <div className="loading-text">SYNTHESIZING CASCADE</div>
+                  <div className="loading-sub" style={{
+                    animation: 'blink 1.2s step-end infinite',
+                    transition: 'opacity 0.3s',
+                  }}>{synthesisStatus}</div>
+                  <div className="synthesis-steps">
+                    <div className={`synth-step ${synthesisStatus.includes('WIND') ? 'active' : synthesisStatus.includes('INFRASTRUCTURE') || synthesisStatus.includes('CASCADE') ? 'done' : ''}`}>
+                      {synthesisStatus.includes('INFRASTRUCTURE') || synthesisStatus.includes('CASCADE') ? '✓' : '○'} WIND
+                    </div>
+                    <div className={`synth-step ${synthesisStatus.includes('INFRASTRUCTURE') ? 'active' : synthesisStatus.includes('CASCADE') ? 'done' : ''}`}>
+                      {synthesisStatus.includes('CASCADE') ? '✓' : '○'} INFRASTRUCTURE
+                    </div>
+                    <div className={`synth-step ${synthesisStatus.includes('CASCADE') ? 'active' : ''}`}>
+                      ○ CASCADE
+                    </div>
+                  </div>
+                </div>
+              ) : loading ? (
                 <div className="loading-state">
                   <div className="loading-ring" />
                   <div className="loading-text">QUERYING NEO4J</div>
@@ -1143,7 +1333,7 @@ export default function App() {
                 <GraphView
                   nodes={cascadeData.nodes}
                   edges={cascadeData.edges}
-                  onNodeClick={setSelectedNode}
+                  onNodeClick={handleNodeClick}
                   highlightPath={simRunning && activePath ? activePath.nodes.slice(0, simStep + 1).map(n => n.id) : []}
                   simRunning={simRunning}
                   simStep={simStep}
@@ -1201,7 +1391,7 @@ export default function App() {
               >
                 <span className="simulate-icon" />
                 {simRunning
-                  ? (simStep === -1 ? 'CONNECTING…' : `PROPAGATING… ${Math.min(simStep + 1, activePath?.nodes.length || 0)}/${activePath?.nodes.length || 0}`)
+                    ? (simStep === -1 ? 'STARTING…' : `PROPAGATING… ${Math.min(simStep + 1, activePath?.nodes.length || 0)}/${activePath?.nodes.length || 0}`)
                   : 'RUN SIMULATION'}
               </button>
             </div>
@@ -1296,6 +1486,91 @@ export default function App() {
                         </div>
                       );
                     })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedId === 'live_wildfires_satellite' && selectedFireId && !synthesisResult && !synthesizing && (
+              <div className="panel-block">
+                <div className="panel-label">LIVE CASCADE GENESIS</div>
+                <div className="synth-fire-info">
+                  <div className="synth-fire-name">{selectedNode?.name}</div>
+                  <div className="synth-fire-id">{selectedFireId}</div>
+                  <button
+                    className="synth-btn"
+                    onClick={() => handleSynthesize(selectedFireId)}
+                    disabled={synthesizing}
+                  >
+                    <span className="synth-btn-icon">◈</span>
+                    SYNTHESIZE CASCADE
+                  </button>
+                  <div className="synth-note">
+                    Queries live wind + OpenStreetMap infrastructure within threat radius
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {synthesizing && selectedFireId && (
+              <div className="panel-block">
+                <div className="panel-label">SYNTHESIS IN PROGRESS</div>
+                <div className="synth-progress">
+                  <div className="synth-progress-step">
+                    <span className={`synth-progress-dot ${synthesisStatus.includes('WIND') ? 'active' : ''}`} />
+                    <span>Wind detection</span>
+                  </div>
+                  <div className="synth-progress-step">
+                    <span className={`synth-progress-dot ${synthesisStatus.includes('INFRASTRUCTURE') ? 'active' : ''}`} />
+                    <span>Infrastructure mapping</span>
+                  </div>
+                  <div className="synth-progress-step">
+                    <span className={`synth-progress-dot ${synthesisStatus.includes('CASCADE') ? 'active' : ''}`} />
+                    <span>Graph construction</span>
+                  </div>
+                  <div className="synth-progress-label">{synthesisStatus}</div>
+                </div>
+              </div>
+            )}
+
+            {synthesisResult && (
+              <div className="panel-block synth-back-block">
+                <button className="synth-back-btn" onClick={handleBackFromSynthesis}>
+                  <span className="synth-back-arrow">←</span>
+                  <span className="synth-back-text">BACK TO LIVE FIRES</span>
+                </button>
+                <div className="synth-back-fire">
+                  <span className="synth-back-fire-dot" />
+                  {synthesisResult.placeName || synthesisResult.fireName}
+                </div>
+              </div>
+            )}
+
+            {synthesisResult && (
+              <div className="panel-block">
+                <div className="panel-label">WIND COMPASS</div>
+                <WindCompass
+                  windSpeedKmh={synthesisResult.wind.speedKmh}
+                  windDirectionDeg={synthesisResult.wind.directionDeg}
+                />
+                <div className="synth-meta">
+                  {synthesisResult.placeName && (
+                    <div className="synth-meta-row">
+                      <span className="key">LOCATION</span>
+                      <span className="val" style={{ fontSize: 9 }}>{synthesisResult.placeName}</span>
+                    </div>
+                  )}
+                  <div className="synth-meta-row">
+                    <span className="key">SPREAD RADIUS</span>
+                    <span className="val">{synthesisResult.spreadRadiusKm.toFixed(0)} km</span>
+                  </div>
+                  <div className="synth-meta-row">
+                    <span className="key">INFRASTRUCTURE</span>
+                    <span className="val">{synthesisResult.infrastructureFound} NODES</span>
+                  </div>
+                  <div className="synth-meta-row">
+                    <span className="key">CASCADE SEEDED</span>
+                    <span className="val">{synthesisResult.nodesSeeded} NODES · {synthesisResult.edgesSeeded} EDGES</span>
                   </div>
                 </div>
               </div>

@@ -209,13 +209,23 @@ A path `A→B→C→D` with edge probabilities `[0.97, 0.89, 0.78]` yields `casc
 REDUCE(d = 0, r IN relationships(path) | d + r.delay_hrs) AS total_delay
 ```
 
-**Step 4 — Risk scoring** for the scenario:
+**Step 4 — Risk scoring** (aggregated expected severity):
+
+For each unique endpoint node reachable by the cascade, compute the probability the cascade reaches it via *any* path (union probability):
 
 ```
-riskScore = min(100, round(topPathProbability × (1 + depth × 0.12)))
+P_reach(e) = 1 - Π(1 - p_i)    for all paths i ending at e
 ```
 
-The depth multiplier rewards longer cascades — a disaster that propagates through 6 systems is exponentially more dangerous than one that propagates through 2.
+Then aggregate across all endpoints:
+
+```
+totalExpectedSeverity = Σ P_reach(e) × severity(e)
+riskScore = min(100, round(totalExpectedSeverity × 3))
+```
+
+This is the standard **Risk = Probability × Consequence** framework. Removing a node (mitigation) prunes all paths through it, reducing `totalExpectedSeverity` — the risk score drops proportionally to the node's importance in the cascade.
+
 
 **Step 5 — Criticality ranking** (PageRank-equivalent):
 
@@ -485,7 +495,7 @@ The core cascade query. Returns all cascade paths from the hazard node.
 {
   "success": true,
   "hazard": { "name": "Lahaina Wildfire", "severity": 9, "type": "wildfire" },
-  "riskScore": 87,
+  "riskScore": 91,
   "pathCount": 8,
   "paths": [
     {
