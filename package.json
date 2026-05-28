@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "private": true,
     "scripts": {
-        "api": "cd api && node index.js",
+        "api": "cd web && node api/index.js",
         "app": "cd app && npx expo start",
         "web": "cd web && npm run dev"
     }
