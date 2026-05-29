@@ -125,6 +125,23 @@ const records = await runQuery(`
 app.get('/api/scenarios/:id', async(req, res) => {
     try {
         const { id } = req.params;
+
+        if (id === 'live_wildfires_satellite') {
+            const records = await runQuery(`
+                MATCH (sc:Scenario {id: $id})-[:CONTAINS]->(h:Hazard {live: true})
+                WHERE h.source = $source
+                RETURN
+                  {id: sc.id, name: sc.name, year: toInteger(sc.year),
+                   deaths: toInteger(sc.deaths), location: sc.location,
+                   cascadeAttributionFactor: sc.cascadeAttributionFactor} AS scenario,
+                  {id: h.id, name: h.name, label: 'Hazard',
+                   severity: toInteger(h.severity)} AS node,
+                  null AS edge
+                ORDER BY h.frp_mw DESC
+            `, { id, source: FIRMS_SOURCE });
+            return res.json({ success: true, data: records });
+        }
+
         const records = await runQuery(`
       MATCH (sc:Scenario {id: $id})-[:CONTAINS]->(n)
       WITH sc, collect(n) AS scenarioNodes
@@ -497,15 +514,10 @@ app.get('/api/analytics/criticality', async(req, res) => {
 // Seeds them into Neo4j as live Hazard nodes, returns them to the client
 
 const https = require('https');
-const FIRMS_SOURCE = 'NASA FIRMS VIIRS_SNPP_NRT';
-const FALLBACK_AS_OF = '2026-05-21T10:30:00.000Z';
-const FALLBACK_FIRES = [
-    { lat: 34.521, lon: 135.233, brightness: 367.8, acq_date: '2026-05-21', acq_time: '1030', satellite: 'N', confidence: 'h', frp: 287.4 },
-    { lat: 38.742, lon: -120.612, brightness: 354.2, acq_date: '2026-05-21', acq_time: '1024', satellite: 'N', confidence: 'h', frp: 241.8 },
-    { lat: -33.932, lon: 151.176, brightness: 349.7, acq_date: '2026-05-21', acq_time: '1018', satellite: 'N', confidence: 'h', frp: 198.6 },
-    { lat: 51.118, lon: 13.764, brightness: 342.1, acq_date: '2026-05-21', acq_time: '1012', satellite: 'N', confidence: 'h', frp: 164.3 },
-    { lat: 3.141, lon: 101.693, brightness: 337.5, acq_date: '2026-05-21', acq_time: '1006', satellite: 'N', confidence: 'h', frp: 129.9 }
-];
+const FIRMS_SOURCE = 'NASA FIRMS VIIRS_NRT';
+const FIRMS_NRT_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
+const FIRMS_DAY_RANGE = Math.min(5, Math.max(1, parseInt(process.env.FIRMS_DAY_RANGE || '2', 10) || 2));
+const FIRMS_DETECTION_LIMIT = 30;
 
 // Helper: fetch a URL and return the full body as a string
 // We use Node's built-in https module so we don't need to worry about 
@@ -531,9 +543,85 @@ function hasUsableFirmsKey(key) {
     return Boolean(key && key.trim());
 }
 
+function splitCsvLine(line) {
+    const values = [];
+    let current = '';
+    let quoted = false;
+
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const next = line[i + 1];
+
+        if (char === '"' && quoted && next === '"') {
+            current += '"';
+            i++;
+        } else if (char === '"') {
+            quoted = !quoted;
+        } else if (char === ',' && !quoted) {
+            values.push(current);
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+
+    values.push(current);
+    return values.map(v => v.trim());
+}
+
+function parseFirmsCsv(csvData, source) {
+    const rows = csvData.split(/\r?\n/).filter(line => line.trim().length > 0);
+    if (rows.length === 0) return [];
+
+    const headers = splitCsvLine(rows[0]).map(h => h.toLowerCase());
+    const indexOf = (...names) => {
+        for (const name of names) {
+            const index = headers.indexOf(name);
+            if (index !== -1) return index;
+        }
+        return -1;
+    };
+
+    const latIdx = indexOf('latitude', 'lat');
+    const lonIdx = indexOf('longitude', 'lon');
+    const frpIdx = indexOf('frp');
+
+    if (latIdx === -1 || lonIdx === -1 || frpIdx === -1) {
+        throw new Error(`NASA FIRMS ${source} CSV missing latitude/longitude/frp columns: ${rows[0].slice(0, 160)}`);
+    }
+
+    const brightnessIdx = indexOf('bright_ti4', 'brightness', 'bright_t31');
+    const acqDateIdx = indexOf('acq_date');
+    const acqTimeIdx = indexOf('acq_time');
+    const satelliteIdx = indexOf('satellite');
+    const confidenceIdx = indexOf('confidence');
+    const daynightIdx = indexOf('daynight');
+
+    return rows.slice(1).map((line, rowIndex) => {
+        const cols = splitCsvLine(line);
+        return {
+            lat: parseFloat(cols[latIdx]),
+            lon: parseFloat(cols[lonIdx]),
+            brightness: brightnessIdx === -1 ? null : parseFloat(cols[brightnessIdx]),
+            acq_date: acqDateIdx === -1 ? '' : (cols[acqDateIdx] || '').trim(),
+            acq_time: acqTimeIdx === -1 ? '' : (cols[acqTimeIdx] || '').trim(),
+            satellite: satelliteIdx === -1 ? '' : (cols[satelliteIdx] || '').trim(),
+            confidence: confidenceIdx === -1 ? '' : (cols[confidenceIdx] || '').trim().toLowerCase(),
+            frp: parseFloat(cols[frpIdx]) || 0,
+            daynight: daynightIdx === -1 ? '' : (cols[daynightIdx] || '').trim().toUpperCase(),
+            source,
+            detection_index: rowIndex
+        };
+    });
+}
+
 function coordinateIdPart(value) {
     const prefix = value < 0 ? 'neg_' : '';
-    return `${prefix}${Math.abs(value).toFixed(2).replace('.', '_')}`;
+    return `${prefix}${Math.abs(value).toFixed(5).replace('.', '_')}`;
+}
+
+function safeSourcePart(value) {
+    return String(value).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 function regionLabelFor(fire) {
@@ -547,7 +635,13 @@ function formatFire(fire) {
     const severity = Math.min(10, Math.max(1, Math.round(fire.frp / 150)));
 
     return {
-        id: `live_fire_${coordinateIdPart(fire.lat)}_${coordinateIdPart(fire.lon)}`,
+        id: `live_fire_${safeSourcePart([
+            fire.source || 'firms',
+            fire.satellite || 'sat',
+            fire.acq_date || 'date',
+            fire.acq_time || 'time',
+            fire.detection_index ?? 'idx'
+        ].join('_'))}_${coordinateIdPart(fire.lat)}_${coordinateIdPart(fire.lon)}`,
         name: `Live Fire \u00b7 ${region}`,
         lat: fire.lat,
         lon: fire.lon,
@@ -558,7 +652,8 @@ function formatFire(fire) {
         region,
         brightness: fire.brightness,
         acq_time: fire.acq_time,
-        satellite: fire.satellite
+        satellite: fire.satellite,
+        firms_source: fire.source
     };
 }
 
@@ -572,7 +667,9 @@ function responseFire(fire) {
         severity: fire.severity,
         acq_date: fire.acq_date,
         confidence: fire.confidence,
-        region: fire.region
+        region: fire.region,
+        satellite: fire.satellite,
+        firms_source: fire.firms_source
     };
 }
 
@@ -590,8 +687,10 @@ async function seedFireNode(fire, now) {
             h.acq_date = $acq_date,
             h.acq_time = $acq_time,
             h.satellite = $satellite,
+            h.firms_source = $firmsSource,
             h.confidence = $confidence,
             h.live = true,
+            h.source = $source,
             h.last_updated = $now
     `, {
         nodeId: fire.id,
@@ -605,7 +704,9 @@ async function seedFireNode(fire, now) {
         acq_date: fire.acq_date,
         acq_time: fire.acq_time,
         satellite: fire.satellite,
+        firmsSource: fire.firms_source,
         confidence: fire.confidence,
+        source: FIRMS_SOURCE,
         now
     });
 
@@ -613,7 +714,7 @@ async function seedFireNode(fire, now) {
         MERGE (sc:Scenario {id: 'live_wildfires_satellite'})
         SET sc.name = 'Live Wildfires — NASA Satellite',
             sc.year = $year,
-            sc.location = 'Global (Top 5 by intensity)',
+            sc.location = 'Global (Top 30 detections by intensity)',
             sc.deaths = 0,
             sc.damage_usd = 0,
             sc.description = 'Real-time wildfire detections from NASA VIIRS satellite (SNPP). Updated every time this endpoint is called.',
@@ -658,16 +759,32 @@ async function enrichFireWithPlaceNameAsync(fire) {
 
 async function cleanSynthesisedData() {
     try {
+        // 1. Remove stale live cascade nodes, including older builds that
+        //    predated the synthesised=true marker but used OSM/synth ids.
         await runQuery(`
-            MATCH (sc:Scenario {id: 'live_wildfires_satellite'})-[:CONTAINS]->(n {synthesised: true})
+            MATCH (sc:Scenario {id: 'live_wildfires_satellite'})-[:CONTAINS]->(n)
+            WHERE n.synthesised = true
+               OR n.source = 'OpenStreetMap'
+               OR n.id STARTS WITH 'osm_'
+               OR n.id STARTS WITH 'synth_'
             DETACH DELETE n
         `);
+
+        // 2. Remove every remaining live-scenario membership. The current
+        //    FIRMS detections are linked back in immediately after cleanup.
+        await runQuery(`
+            MATCH (sc:Scenario {id: 'live_wildfires_satellite'})-[r:CONTAINS]->()
+            DELETE r
+        `);
+
+        // 3. Clean up synthesis-derived properties from remaining hazard nodes.
         await runQuery(`
             MATCH (h:Hazard {live: true})
             REMOVE h.wind_speed_kmh, h.wind_direction_deg, h.spread_radius_km,
                    h.cascade_synthesised, h.synthesis_timestamp, h.place_name
         `);
-        console.log('[FIRMS] Cleaned up previous synthesised cascade data');
+
+        console.log('[FIRMS] Cleaned up synthesised data & old hazard links');
     } catch (err) {
         console.warn('[FIRMS] Cleanup warning:', err.message);
     }
@@ -701,73 +818,77 @@ async function sendFireResponse(res, fires, asOf, options = {}) {
     }
 }
 
-function sendFallbackFireResponse(res, message) {
-    return sendFireResponse(res, FALLBACK_FIRES, FALLBACK_AS_OF, {
-        live: false,
-        source: 'Seeded fallback wildfire data',
-        message
-    });
-}
-
 app.get('/api/realtime/wildfires', async(req, res) => {
     try {
         const FIRMS_KEY = process.env.FIRMS_MAP_KEY;
 
-        // Guard: if no key is configured, return mock data instead of crashing
         if (!hasUsableFirmsKey(FIRMS_KEY)) {
-            console.warn('[FIRMS] No FIRMS_MAP_KEY set — returning mock fire data');
-            return sendFallbackFireResponse(res, 'Set FIRMS_MAP_KEY in .env to enable live NASA FIRMS data');
+            console.warn('[FIRMS] No FIRMS_MAP_KEY set — no live NASA data returned');
+            await cleanSynthesisedData();
+            return res.status(503).json({
+                success: false,
+                live: false,
+                fires_seeded: 0,
+                source: FIRMS_SOURCE,
+                as_of: new Date().toISOString(),
+                data: [],
+                error: 'FIRMS_MAP_KEY is not configured. Live NASA FIRMS data is required.'
+            });
         }
 
-        // Build the FIRMS CSV URL
-        // VIIRS_SNPP_NRT = Suomi NPP satellite, near-real-time, highest quality
-        // world = global coverage
-        // 1 = past 24 hours only
-        const firmsUrl = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_KEY}/VIIRS_SNPP_NRT/world/1`;
+        console.log(`[FIRMS] Fetching ${FIRMS_DAY_RANGE}-day NRT satellite data from NASA...`);
 
-        console.log('[FIRMS] Fetching satellite data from NASA...');
-        const csvData = await fetchText(firmsUrl);
+        const sourceResults = await Promise.allSettled(FIRMS_NRT_SOURCES.map(async(source) => {
+            const firmsUrl = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${FIRMS_KEY}/${source}/world/${FIRMS_DAY_RANGE}`;
+            const csvData = await fetchText(firmsUrl);
+            const detections = parseFirmsCsv(csvData, source);
+            console.log(`[FIRMS] ${source}: ${detections.length} raw detections`);
+            return detections;
+        }));
 
-        // Split into lines, remove the header line (index 0), remove empty lines
-        const lines = csvData.split('\n').slice(1).filter(line => line.trim().length > 0);
+        const parsed = [];
+        const sourceErrors = [];
 
-        console.log(`[FIRMS] Raw detections received: ${lines.length}`);
+        for (let i = 0; i < sourceResults.length; i++) {
+            const result = sourceResults[i];
+            if (result.status === 'fulfilled') {
+                parsed.push(...result.value);
+            } else {
+                sourceErrors.push(`${FIRMS_NRT_SOURCES[i]}: ${result.reason.message}`);
+            }
+        }
 
-        // Parse each CSV line into an object
-        // CSV columns: lat,lon,bright_ti4,scan,track,acq_date,acq_time,satellite,instrument,confidence,version,bright_ti5,frp,daynight
-        const parsed = lines.map(line => {
-            const cols = line.split(',');
-            return {
-                lat: parseFloat(cols[0]),
-                lon: parseFloat(cols[1]),
-                brightness: parseFloat(cols[2]),
-                acq_date: (cols[5] || '').trim(),
-                acq_time: (cols[6] || '').trim(),
-                satellite: (cols[7] || '').trim(),
-                confidence: (cols[9] || '').trim().toLowerCase(),
-                frp: parseFloat(cols[12]) || 0,
-                daynight: (cols[13] || '').trim().toUpperCase()
-            };
-        });
+        if (parsed.length === 0 && sourceErrors.length === FIRMS_NRT_SOURCES.length) {
+            throw new Error(sourceErrors.join(' | '));
+        }
 
-        // Filter: only keep high-confidence detections ('h')
-        // Low and nominal confidence ('l', 'n') are often false positives
-        const highConf = parsed.filter(f =>
-            f.confidence === 'h' &&
+        if (sourceErrors.length > 0) {
+            console.warn(`[FIRMS] Some sources failed: ${sourceErrors.join(' | ')}`);
+        }
+
+        console.log(`[FIRMS] Combined raw detections received: ${parsed.length}`);
+
+        const validFires = parsed.filter(f =>
             !isNaN(f.lat) &&
             !isNaN(f.lon) &&
             f.frp > 0
         );
 
+        // Prefer high-confidence detections, but do not blank the graph when
+        // the current NASA feed only contains nominal detections.
+        const highConf = validFires.filter(f => f.confidence === 'h');
+
         console.log(`[FIRMS] High-confidence fires: ${highConf.length}`);
 
         // Sort by FRP descending — highest intensity fires first
-        highConf.sort((a, b) => b.frp - a.frp);
+        const candidates = highConf.length > 0 ? highConf : validFires;
+        candidates.sort((a, b) => b.frp - a.frp);
 
-        // Take top 5 most intense fires globally
-        const top5 = highConf.slice(0, 5);
+        // Take the strongest live detections globally.
+        const topDetections = candidates.slice(0, FIRMS_DETECTION_LIMIT);
 
-        if (top5.length === 0) {
+        if (topDetections.length === 0) {
+            await cleanSynthesisedData();
             return res.json({
                 success: true,
                 live: true,
@@ -775,15 +896,24 @@ app.get('/api/realtime/wildfires', async(req, res) => {
                 source: FIRMS_SOURCE,
                 as_of: new Date().toISOString(),
                 data: [],
-                message: 'NASA FIRMS returned data, but no high-confidence fires matched the current filter'
+                message: 'NASA FIRMS returned data, but no active detections with positive FRP were available'
             });
         }
 
-        return sendFireResponse(res, top5, new Date().toISOString());
+        return sendFireResponse(res, topDetections, new Date().toISOString());
 
     } catch (err) {
         console.error('[FIRMS] Error:', err.message);
-        return sendFallbackFireResponse(res, `NASA FIRMS unavailable: ${err.message}`);
+        await cleanSynthesisedData();
+        return res.status(502).json({
+            success: false,
+            live: false,
+            fires_seeded: 0,
+            source: FIRMS_SOURCE,
+            as_of: new Date().toISOString(),
+            data: [],
+            error: `NASA FIRMS unavailable: ${err.message}`
+        });
     }
 });
 

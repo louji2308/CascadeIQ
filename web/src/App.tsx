@@ -36,6 +36,9 @@ interface Scenario {
   cascadeAttributionFactor?: number;
 }
 
+const LIVE_WILDFIRE_SCENARIO_ID = 'live_wildfires_satellite';
+const LIVE_WILDFIRE_LOCATION = 'Global (Top 30 detections by intensity)';
+
 interface CascadeNode {
   id: string;
   name: string;
@@ -87,6 +90,28 @@ interface ScenarioNodeRecord {
 
 interface ScenarioNodeResponse {
   data: ScenarioNodeRecord[];
+}
+
+interface RealtimeFireRecord {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  frp_mw: number;
+  severity: number;
+  acq_date: string;
+  confidence: string;
+  region: string;
+}
+
+interface RealtimeWildfiresResponse {
+  success: boolean;
+  live: boolean;
+  fires_seeded: number;
+  source: string;
+  as_of: string;
+  data: RealtimeFireRecord[];
+  message?: string;
 }
 
 interface ValidationData {
@@ -526,7 +551,32 @@ function asNumber(value: number | NeoInt) {
 }
 
 function getErrorMessage(error: unknown) {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: string; message?: string } | undefined;
+    return data?.error || data?.message || error.message;
+  }
   return error instanceof Error ? error.message : 'FETCH ERROR';
+}
+
+function liveFireRecordsToCascadeData(fires: RealtimeFireRecord[]): CascadeData {
+  const nodeMap = new Map<string, CascadeNode>();
+  fires.forEach((fire, index) => {
+    const id = fire.id || `live_fire_${index}_${fire.lat}_${fire.lon}`;
+    if (nodeMap.has(id)) return;
+    nodeMap.set(id, {
+      id,
+      name: fire.name || `Live Fire · ${fire.region}`,
+      label: 'Hazard',
+      severity: fire.severity,
+    });
+  });
+
+  return {
+    nodes: Array.from(nodeMap.values()),
+    edges: [],
+    riskScore: 0,
+    paths: [],
+  };
 }
 
 export default function App() {
@@ -557,7 +607,13 @@ export default function App() {
   const abortRef = useRef<AbortController | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const selectedScenario = useMemo(
-    () => scenarios.find(s => s.id === selectedId) || null,
+    () => {
+      const scenario = scenarios.find(s => s.id === selectedId) || null;
+      if (scenario?.id === LIVE_WILDFIRE_SCENARIO_ID) {
+        return { ...scenario, location: LIVE_WILDFIRE_LOCATION };
+      }
+      return scenario;
+    },
     [scenarios, selectedId],
   );
 
@@ -573,9 +629,22 @@ export default function App() {
     setLoadingStatus('Connecting to Neo4j...');
 
     try {
-      if (scenarioId === 'live_wildfires_satellite') {
-        await axios.get(`${API_BASE}/api/realtime/wildfires`, { signal });
+      if (scenarioId === LIVE_WILDFIRE_SCENARIO_ID) {
+        setValidationData(null);
+        setLoadingStatus('Fetching NASA FIRMS detections...');
+        const fireRes = await axios.get<RealtimeWildfiresResponse>(`${API_BASE}/api/realtime/wildfires`, { signal });
         if (signal.aborted) return;
+
+        setLoadingStatus('Rendering live satellite nodes...');
+        const fires = fireRes.data.data || [];
+        if (fires.length === 0) {
+          throw new Error(fireRes.data.message || 'NASA FIRMS returned no active detections for the current live query.');
+        }
+        const liveData = liveFireRecordsToCascadeData(fires);
+        setCascadeData(liveData);
+        setBaselineRiskScore(0);
+        setSelectedPath(0);
+        return;
       } else {
         try {
           const valUrl = `${API_BASE}/api/scenarios/${scenarioId}/validation`;
@@ -678,6 +747,15 @@ export default function App() {
   const filterCascadeLocally = useCallback((removed: string[], syn: SynthesisResult): CascadeData => {
     if (!syn || !syn.paths) {
       return { nodes: syn?.nodes || [], edges: syn?.edges || [], riskScore: syn?.riskScore || 0, paths: [] };
+    }
+
+    if (removed.length === 0) {
+      return {
+        nodes: syn.nodes || [],
+        edges: syn.edges || [],
+        riskScore: syn.riskScore || 0,
+        paths: syn.paths || [],
+      };
     }
 
     const removedSet = new Set(removed);
@@ -839,7 +917,7 @@ export default function App() {
 
   const handleNodeClick = useCallback((node: CascadeNode) => {
     setSelectedNode(node);
-    if (selectedId === 'live_wildfires_satellite' && node.label === 'Hazard') {
+    if (selectedId === LIVE_WILDFIRE_SCENARIO_ID && node.label === 'Hazard') {
       setSelectedFireId(node.id);
     } else {
       setSelectedFireId(null);
@@ -1093,7 +1171,7 @@ export default function App() {
                 <div className="scenario-card">
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                     <div className="scenario-card-name">{selectedScenario.name}</div>
-                    {selectedScenario.id === 'live_wildfires_satellite' && (
+                    {selectedScenario.id === LIVE_WILDFIRE_SCENARIO_ID && (
                       <span style={{
                         fontFamily: 'var(--font-mono)',
                         fontSize: 9,
@@ -1386,7 +1464,7 @@ export default function App() {
 
               <button
                 className={`simulate-btn ${simRunning ? 'running' : ''}`}
-                disabled={!cascadeData || simRunning}
+                disabled={!cascadeData || cascadeData.paths.length === 0 || simRunning}
                 onClick={runSimulation}
               >
                 <span className="simulate-icon" />
@@ -1491,7 +1569,7 @@ export default function App() {
               </div>
             )}
 
-            {selectedId === 'live_wildfires_satellite' && selectedFireId && !synthesisResult && !synthesizing && (
+            {selectedId === LIVE_WILDFIRE_SCENARIO_ID && selectedFireId && !synthesisResult && !synthesizing && (
               <div className="panel-block">
                 <div className="panel-label">LIVE CASCADE GENESIS</div>
                 <div className="synth-fire-info">

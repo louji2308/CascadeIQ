@@ -65,6 +65,7 @@ const GraphView: React.FC<GraphViewProps> = ({
   const sigmaRef = useRef<Sigma | null>(null);
   const graphRef = useRef<Graph | null>(null);
   const nodesDataRef = useRef<Node[]>([]);
+  const nodePositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
   const [tooltip, setTooltip] = useState<{ node: Node; x: number; y: number; color: string } | null>(null);
   const animFrameRef = useRef<number>(0);
   const edgeParticlesRef = useRef<Map<string, number>>(new Map());
@@ -149,6 +150,7 @@ const GraphView: React.FC<GraphViewProps> = ({
       graphRef.current = g;
 
       nodes.forEach(n => {
+        if (g.hasNode(n.id)) return;
         const sev = n.severity || 5;
         const size = 6 + sev * 1.8;
         g.addNode(n.id, {
@@ -193,6 +195,13 @@ const GraphView: React.FC<GraphViewProps> = ({
           });
         } catch { /* fallback */ }
       }
+
+      g.forEachNode((id, attrs) => {
+        nodePositionsRef.current.set(id, {
+          x: attrs.x as number,
+          y: attrs.y as number,
+        });
+      });
 
       try {
         const nodeReducer = (node: string, data: Record<string, unknown>) => {
@@ -384,7 +393,13 @@ const GraphView: React.FC<GraphViewProps> = ({
 
     // Remove stale nodes
     Array.from(graph.nodes()).forEach(id => {
-      if (!nodeIds.has(id)) graph.dropNode(id);
+      if (!nodeIds.has(id)) {
+        nodePositionsRef.current.set(id, {
+          x: graph.getNodeAttribute(id, 'x'),
+          y: graph.getNodeAttribute(id, 'y'),
+        });
+        graph.dropNode(id);
+      }
     });
 
     // Add or update nodes
@@ -401,6 +416,7 @@ const GraphView: React.FC<GraphViewProps> = ({
       } else {
         const sev = n.severity || 5;
         const size = 6 + sev * 1.8;
+        const savedPosition = nodePositionsRef.current.get(n.id);
         graph.addNode(n.id, {
           label: n.name,
           size,
@@ -409,10 +425,17 @@ const GraphView: React.FC<GraphViewProps> = ({
           originalColor: NODE_COLORS[n.label] || '#AAAAAA',
           nodeLabel: n.label,
           severity: sev,
-          x: stableHash(n.id, 300),
-          y: stableHash(n.id + '_y', 300),
+          x: savedPosition?.x ?? stableHash(n.id, 300),
+          y: savedPosition?.y ?? stableHash(n.id + '_y', 300),
         });
       }
+    });
+
+    graph.forEachNode((id, attrs) => {
+      nodePositionsRef.current.set(id, {
+        x: attrs.x as number,
+        y: attrs.y as number,
+      });
     });
 
     // Remove stale edges, add new edges
